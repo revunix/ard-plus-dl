@@ -1,15 +1,16 @@
-FROM alpine:3.22.0
+FROM alpine:3.22
 
-RUN apk add --no-cache bash && apk add --no-cache curl && apk add --no-cache yt-dlp && apk add --no-cache jq && apk add --no-cache util-linux && apk add --no-cache perl 
+RUN apk add --no-cache bash curl ffmpeg yt-dlp jq util-linux perl
 
 WORKDIR /app
+COPY ard-plus-dl.sh ./
+RUN chmod +x /app/ard-plus-dl.sh && ln -s /app/ard-plus-dl.sh /usr/bin/download
 
-# Copy ard-plus-dl script
-COPY ard-plus-dl.sh .
+ENV DOWNLOADS_DIR=/data/downloads
+ENV XDG_STATE_HOME=/data
+# Credentials file lives at /data/ard-plus-dl/credentials, i.e. on the mounted volume.
+ENV XDG_CONFIG_HOME=/data
+WORKDIR /data
 
-# Replace yt-dlp output path in script
-RUN sed -i -e 's/"$filename"/\/data\/"$filename"/g' /app/ard-plus-dl.sh
-
-# Add a script-based download alias
-RUN ln -s /app/ard-plus-dl.sh /usr/bin/download && \
-    chmod +x /usr/bin/download
+# Arguments are appended directly: docker run ard-plus-dl <url> runs the script.
+ENTRYPOINT ["/app/ard-plus-dl.sh"]
