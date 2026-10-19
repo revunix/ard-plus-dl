@@ -149,7 +149,10 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum * > checksums.txt
+          for file in *; do
+            [ "$file" = "checksums.txt" ] && continue
+            sha256sum "$file"
+          done > checksums.txt
 
       - name: Create or update release
         env:
