@@ -203,7 +203,7 @@ go test ./... -count=1
 
 Die End-to-End-Prüfung `TestEndToEndNativeDash` erzeugt mit ffmpeg einen echten DASH-Stream, lädt ihn über einen lokalen HTTP-Server und prüft Dateiname und Stream-Inventar des Ergebnisses.
 
-Release-Artefakte für alle sechs Ziele (Linux/macOS/Windows × amd64/arm64) baut der GitHub-Actions-Workflow. Ein Tag-Push mit `v*` baut alle sechs Ziele und veröffentlicht sie mit den Archiven und `checksums.txt` unter [github.com/revunix/ard-plus-dl/releases](https://github.com/revunix/ard-plus-dl/releases):
+Release-Artefakte für alle sechs Ziele (Linux/macOS/Windows × amd64/arm64) baut der GitHub-Actions-Workflow. Ein Tag-Push mit `v*` baut alle sechs Ziele, erzeugt aus den Commits seit dem letzten Tag eine `CHANGELOG.md` und veröffentlicht die Archive, die Checksummen und den Changelog unter [github.com/revunix/ard-plus-dl/releases](https://github.com/revunix/ard-plus-dl/releases). Der Changelog erscheint auch als Release-Beschreibung:
 
 ```bash
 git tag v1.2.3
