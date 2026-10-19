@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT8S">
+  <Period>
+    <AdaptationSet contentType="video" mimeType="video/mp4">
+      <SegmentTemplate timescale="1" duration="4" initialization="v/init.mp4" media="v/seg-$Number$.m4s"/>
+      <Representation id="v" bandwidth="100000" width="640" height="360" codecs="avc1.42c01e"/>
+    </AdaptationSet>
+    <AdaptationSet id="s-de" contentType="text" mimeType="text/vtt" lang="de">
+      <SegmentTemplate timescale="1" duration="4" initialization="s/de/init.vtt" media="s/de/seg-$Number$.vtt"/>
+      <Representation id="de-vtt" bandwidth="1000"/>
+    </AdaptationSet>
+    <AdaptationSet id="s-de-hard" contentType="text" mimeType="text/vtt" lang="de">
+      <SegmentTemplate timescale="1" duration="4" initialization="s/de-hard/init.vtt" media="s/de-hard/seg-$Number$.vtt"/>
+      <Representation id="de-hard-vtt" bandwidth="2000"/>
+    </AdaptationSet>
+    <AdaptationSet id="s-en" contentType="text" mimeType="text/vtt" lang="en-US">
+      <SegmentTemplate timescale="1" duration="4" initialization="s/en/init.vtt" media="s/en/seg-$Number$.vtt"/>
+      <Representation id="en-vtt" bandwidth="1000"/>
+    </AdaptationSet>
+    <AdaptationSet id="s-fr" contentType="text" mimeType="text/vtt" lang="fr">
+      <SegmentTemplate timescale="1" duration="4" initialization="s/fr/init.vtt" media="s/fr/seg-$Number$.vtt"/>
+      <Representation id="fr-vtt" bandwidth="1000"/>
+    </AdaptationSet>
+  </Period>
+</MPD>

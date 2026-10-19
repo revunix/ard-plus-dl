@@ -2,71 +2,136 @@
 
 Hilfswerkzeug für [ARD-Plus-Abonnenten](https://www.ardplus.de/) zur lokalen Archivierung von Filmen, Serien und Tatort-Sammlungen - nur im Rahmen eines gültigen Abos und des geltenden Rechts.
 
-Fork von [chrmei/ard-plus-dl](https://github.com/chrmei/ard-plus-dl), das auf [marco79cgn/ard-plus-dl](https://github.com/marco79cgn/ard-plus-dl) aufbaut - mit Batch-Verarbeitung, GraphQL-Integration, einheitlicher Dateibenennung und verbesserter Fehlerbehandlung.
+Ein einzelnes Go-Binary für Linux, Windows und macOS mit interaktiver Terminal-Oberfläche (TUI) und identischer Kommandozeile für Automatisierung. Der Downloader spricht DASH selbst (kein yt-dlp); ffmpeg und ffprobe werden nur zum Muxen und Auslesen der Medieninformationen verwendet.
 
 > **Rechtlicher Hinweis:** Nur für die eigene, private Nutzung mit gültigem ARD-Plus-Abo. Keine Weitergabe heruntergeladener Inhalte. Details: [LEGAL.md](LEGAL.md)
 
 ## Features
 
 - Filme, Serien und Tatort-Kategorien werden automatisch erkannt
-- Mehrere Tonspuren und Untertitel, sofern verfügbar
-- Interaktive Staffelauswahl oder `--automatic` für unbeaufsichtigte Abläufe
-- Mehrere URLs aus einer Link-Datei (`--links-file`) - z. B. zum Fortsetzen unterbrochener Jobs
-- Dateien werden direkt mit einheitlichem Namensschema gespeichert (`Titel.S01E01.German.AAC.1080p.Web-DL.x264-TAG.mp4`); der eigene Datei-Tag ist Pflichtangabe
-- Vorhandene Dateien werden übersprungen, abgebrochene Downloads fortgesetzt (`--force-redownload` verwirft auch Teil-Dateien)
+- TUI für die interaktive Nutzung: URL, Zugangsdaten, Staffelauswahl, Fortschritt der laufenden Downloads
+- Headless-Modus für Automatisierung (`--automatic`, `--links-file`, `--force-redownload`)
+- Nativer DASH-Downloader mit Segment-Resume, Wiederholversuchen und mehreren Tonspuren
+- Untertitel in Deutsch und Englisch, sofern verfügbar
+- Einheitliche Dateinamen über ffprobe-Tags, eigener Datei-Tag ist Pflichtangabe
+- Vorhandene Dateien werden übersprungen, abgebrochene Downloads fortgesetzt (`--force-redownload` verwirft auch Teil-Downloads)
+- Mehrere URLs aus einer Link-Datei - z. B. zum Fortsetzen unterbrochener Jobs
+- **Bibliothek**: beliebig viele Serien/Tatort-Kategorien speichern (SQLite) und später erneut prüfen
+- **Neue Folgen erkennen**: `--check` bzw. `n` in der TUI vergleicht die aktuelle Episodenliste mit der Historie
+- Zugangsdaten und Datei-Tag werden gemerkt; das Passwort liegt im Schlüsselbund des Systems
+
+## Screenshots
+
+| Downloads | Bibliothek |
+|-----------|------------|
+| ![Downloads und Aktivität](docs/screenshots/downloads.png) | ![Bibliothek](docs/screenshots/library.png) |
+
+| Staffeln und Folgen |
+|---------------------|
+| ![Staffeln und Folgen](docs/screenshots/episodes.png) |
 
 ## Voraussetzungen
 
-Bash, [jq](https://jqlang.github.io/jq/), [yt-dlp](https://github.com/yt-dlp/yt-dlp), [ffmpeg](https://ffmpeg.org/) inklusive `ffprobe` (von yt-dlp für `--merge-output-format mp4`, `bv+mergeall` und `--embed-subs` benötigt; `ffprobe` liefert die Medien-Tags für die Dateinamen — bei Installation über pip oft nicht automatisch dabei), `perl` (Tatort-Episodenliste aus `ld+json`), `column` aus [util-linux](https://git.kernel.org/pub/scm/utils/util-linux/util-linux.git/) (Staffeltabelle; nicht auf allen Systemen in coreutils enthalten), GNU-Tools (`curl`, `grep`, `awk`, `cut`, `sed`, `base64`, `tr`) und eine aktive [ARD-Plus-Mitgliedschaft](https://www.ardplus.de/). Im Docker-Image ist alles Benötigte inklusive `ffmpeg` bereits enthalten.
+- **ffmpeg und ffprobe** auf dem `PATH` (`ARD_PLUS_FFMPEG` / `ARD_PLUS_FFPROBE` überschreiben die Pfade). Fehlen sie, meldet das Programm `Missing required dependencies: ...`.
+- Aktive [ARD-Plus-Mitgliedschaft](https://www.ardplus.de/)
 
 ## Installation
+
+Fertige Binaries gibt es auf der [Releases-Seite](https://github.com/revunix/ard-plus-dl/releases) für Linux, macOS und Windows (amd64/arm64). Alternativ:
+
+```bash
+go install github.com/revunix/ard-plus-dl/cmd/ard-plus-dl@latest
+```
+
+Aus dem Quellbaum:
 
 ```bash
 git clone https://github.com/revunix/ard-plus-dl.git
 cd ard-plus-dl
-chmod 755 ard-plus-dl.sh
+go build -trimpath -o ard-plus-dl ./cmd/ard-plus-dl
 ```
-
-Nur das Skript:
-
-```bash
-curl -O https://raw.githubusercontent.com/revunix/ard-plus-dl/refs/heads/main/ard-plus-dl.sh
-chmod 755 ard-plus-dl.sh
-```
-
-Das Skript ist eigenständig: Es benötigt keine weiteren Dateien aus dem Repository (die GraphQL-Dokumente sind eingebettet). Eine ältere Kopie, die noch `graphql-queries.sh` neben sich erwartet, bricht beim Start mit einer Meldung über eine fehlende Datei ab — dann das Skript neu laden.
 
 ## Verwendung
 
 ```bash
-./ard-plus-dl.sh [-h|--help]
-./ard-plus-dl.sh [--automatic] [--links-file <datei>] [--force-redownload] <url> [<username> <password>] [skip]
+ard-plus-dl [-h|--help] [-v|--version]
+ard-plus-dl [--automatic] [--links-file <datei>] [--force-redownload] <url> [<username> <password>] [skip]
 ```
 
-Optionen müssen vor den Positionsargumenten stehen: Das Skript liest Optionen nur am Anfang ein, das erste Argument ohne führende `-` beginnt die Positionsliste.
+Ohne URL startet die TUI und fragt die fehlenden Angaben ab. Optionen müssen vor den Positionsargumenten stehen: Das erste Argument ohne führende `-` beginnt die Positionsliste.
 
 | Option / Parameter | Beschreibung |
 |--------------------|--------------|
 | `-h`, `--help` | Usage ausgeben und mit Exit 0 beenden; eine unbekannte Option meldet `Unknown option: <arg>` auf stderr und endet mit Exit 1 |
+| `-v`, `--version` | Version ausgeben und mit Exit 0 beenden |
 | `--automatic` | Alle Staffeln/Episoden ohne Rückfrage verarbeiten |
 | `--links-file <datei>` | Mehrere URLs aus Datei (aktiviert `--automatic`) |
-| `--force-redownload` | Vorhandene `.mp4`-Dateien und Teil-Downloads des Ziels (`*.part*`, `*.ytdl` und Fragmente) verwerfen und neu laden; yt-dlp erhält zusätzlich `--force-overwrites` |
-| `url` | ARD-Plus-Übersichtsseite (Film, Serie oder Tatort-Kategorie). Andere Hosts oder Pfade werden vor der Abhängigkeitsprüfung mit `Invalid URL: <Grund>` auf stderr und Exit 1 abgelehnt (im Batch-Modus landen sie als `invalid URL: …` in `failed_links_*`) |
+| `--force-redownload` | Vorhandene Dateien und Teil-Downloads des Ziels verwerfen und neu laden |
+| `url` | ARD-Plus-Übersichtsseite: Film/Serie (`/details/...`), Tatort-Kategorie (`/kategorie/tatort-<stadt>` bzw. kurz `/tatort-<stadt>`) oder das Tatort-Archiv `/tatort`. Andere Hosts oder Pfade werden mit `Invalid URL: <Grund>` und Exit 1 abgelehnt |
 | `username`, `password` | Optional: eigene ARD-Plus-Zugangsdaten, beide nötig (siehe [Zugangsdaten](#zugangsdaten)) |
-| `skip` | Optional, nur Serien — das gilt auch im Batch-Modus (`--links-file`): erste N Episoden der **ersten Staffel** überspringen. Ohne Angabe oder mit `0`/`1`: nichts überspringen. `N` ≥ 2 überspringt die ersten N Episoden der ersten Staffel; weitere Staffeln starten jeweils bei Episode 1. Bei Tatort-Kategorien gilt dieser Parameter nicht (`--automatic`: alle Episoden; interaktiv: separate Abfrage). |
+| `skip` | Optional: erste N Episoden der **ersten Staffel** überspringen; `0`/`1` überspringt nichts |
+| `--library` | Gespeicherte Serien mit Anzahl neuer Folgen auflisten |
+| `--check` | Alle gespeicherten Serien auf neue Folgen prüfen (ohne Download) |
+| `--download-new` | Prüfen und die neuen Folgen herunterladen |
+| `--add <url>` | Eine Serie/Tatort-Kategorie in die Bibliothek aufnehmen, ohne zu laden |
 
-Nach der URL wertet das Skript höchstens drei Positionsargumente aus. Zwei Werte gelten als `username` **und** `password` — beide sind nötig; fehlt eines, endet der Aufruf mit `Credentials missing!`. Ein einzelner Wert ist nur dann `skip`, wenn er rein numerisch ist; ein einzelner Textwert wird als `username` gelesen und führt wegen des fehlenden Passworts ebenfalls zu `Credentials missing!`.
+Jeder normale Download trägt die URL automatisch in die Bibliothek ein.
 
-### `skip`-Parameter (Serien)
+### TUI
 
-Der optionale Zähler am Ende der Kommandozeile steuert nur Serien-Downloads; das gilt auch im Batch-Modus (`--links-file`). Intern wird er an `tail -n +…` übergeben; der Standardwert `1` bedeutet daher **kein** Überspringen (nicht „eine Episode überspringen“). Explizit `0` oder `1` hat dieselbe Wirkung. Ein Wert `N` ≥ 2 lässt die ersten N Episoden der ersten verarbeiteten Staffel aus; jede weitere Staffel beginnt wieder bei Episode 1.
+Mit einem Terminal (und ohne `--automatic`/`--links-file`) startet die interaktive Oberfläche auf der **Bibliothek**, sobald Serien gespeichert sind. Die TUI benötigt mindestens 40x12 Zeichen. Lange Listen scrollen; ober- und unterhalb des sichtbaren Ausschnitts zeigt `… N weitere` die Anzahl der verborgenen Zeilen.
+
+`?` blendet die Hilfe ein und aus; jede andere Taste schließt sie wieder. `ctrl+c` hat Vorrang und beendet die TUI auch bei offener Hilfe.
+
+1. **Bibliothek** - gespeicherte Serien/Filme/Tatort-Städte mit Anzahl neuer Folgen
+   - `enter` öffnet den Eintrag und aktualisiert Staffeln/Folgen; `d` lädt neue Folgen und öffnet die Download-Ansicht, `n` prüft alle Einträge
+   - `space` aktivieren/deaktivieren, `x` entfernt nach erneutem Druck (zweistufige Sicherheitsabfrage in der Statuszeile)
+   - `pgup`/`pgdown` blättern, `home`/`end` springen an den Anfang bzw. ans Ende
+   - `a` neue URL aufnehmen, `s` Einstellungen (Benutzer, Passwort, Datei-Tag), `q` beenden
+2. **Seriendetails** - Staffeln mit Folgenzahl und offenen Folgen
+   - `up`/`down` wählen eine Staffel, `pgup`/`pgdown` blättern, `home`/`end` springen an den Anfang bzw. ans Ende
+   - `enter` öffnet die Folgenliste, `d` lädt alle offenen Folgen der Staffel
+3. **Folgenliste** - Folgen der ausgewählten Staffel mit Status (geladen/offen)
+   - `space` wählt einzelne Folgen, `a` alle/keine, `enter`/`d` lädt die Auswahl. Ohne jede Markierung werden alle offenen Folgen der Staffel geladen; nach einer Abwahl werden nur die markierten geladen, bei keiner Markierung keine
+   - `pgup`/`pgdown` blättern, `home`/`end` springen an den Anfang bzw. ans Ende
+   - `esc` zurück zu den Staffeln; bei Tatort bleibt die Folgenliste flach und `esc` kehrt zur Bibliothek zurück
+4. **Start** - URL, Zugangsdaten und Datei-Tag eingeben (`tab` wechselt das Feld, `enter` startet bzw. speichert, `esc` zurück)
+5. **Serie** - beim Start einer neuen Serie Staffeln auswählen (`space` umschalten, `a` alle, `enter` starten, `pgup`/`pgdown`/`home`/`end` navigieren)
+6. **Tatort** - Anzahl zu überspringender Episoden (`0` bis `N`, `0` = alle laden)
+7. **Downloads** - öffnet sich automatisch; links aktive Datei und Fortschritt, rechts die letzten Meldungen; bei schmalen Terminals untereinander. `q`/`ctrl+c`: erster Druck bricht ab, zweiter beendet die TUI
+8. **Fertig** - Zusammenfassung; `l` zurück zur Bibliothek, `q`/`enter` beendet
+
+### Tatort-Archiv
+
+`https://www.ardplus.de/tatort` wird auf die ARD-Plus-Sammlung `Tatort Städte` (`/kategorie/tatort-cities`) abgebildet. Die TUI listet die darin verlinkten Stadt-Kategorien wie Köln, Münster und Wien; Ermittler-Team-Sammlungen werden nicht mit eingemischt. `space` wählt einzelne Städte aus, `a` alle. Ohne Terminal bzw. mit `--automatic` wird jede Stadt-Kategorie separat verarbeitet.
+
+Das Archiv selbst wird **nicht** als ein Eintrag gespeichert: Beim Aufnehmen oder Prüfen wird es in einzelne Stadt-Einträge mit der kanonischen URL `/kategorie/tatort-<slug>` zerlegt. Diese erscheinen in der Bibliothek und lassen sich wie jede andere Serie öffnen, prüfen und laden. Ein bereits vorhandener Eintrag `Tatort (alle)` wird beim nächsten `--check` automatisch in Stadt-Kategorien aufgeteilt.
+
+### Bibliothek und neue Folgen
+
+Alle Zustandsdaten liegen in einer SQLite-Datei (Standard: `~/.local/state/ard-plus-dl/library.db`, via `ARD_PLUS_LIBRARY` änderbar):
+
+| Tabelle | Inhalt |
+|---------|--------|
+| `settings` | Benutzername, Datei-Tag, letzte URL |
+| `series` | die Bibliothek: URL, Titel, Art (Serie/Tatort/Film), aktiv, neue Folgen, letzte Prüfung |
+| `episodes` | jede bekannte Folge mit Erstfund und Download-Zeitpunkt |
+
+Ein Eintrag gilt als **neu**, wenn seine Episoden-ID beim Prüfen zum ersten Mal auftaucht. Geladene Folgen werden markiert und nicht erneut geladen. Für Zeitsteuerung (z. B. cron) genügt:
+
+```bash
+ard-plus-dl --check          # Exit 1, wenn eine Prüfung fehlschlägt
+ard-plus-dl --download-new   # lädt nur die neuen Folgen
+```
+
+Das **Passwort** wird bevorzugt im Schlüsselbund des Systems abgelegt (macOS Keychain, Windows Credential Manager, Linux Secret Service). Ist keiner erreichbar - etwa im Container -, fällt das Tool auf die Zugangsdaten-Datei mit `chmod 600` zurück und sagt das beim Speichern.
 
 ### Zugangsdaten
 
 Zugangsdaten werden in dieser Reihenfolge gesucht:
 
-1. **Positionsargumente** `<username> <password>` - **nicht empfohlen**, da Kommandozeilenargumente für alle Prozesse auf dem System sichtbar sind (`ps`, `/proc/<pid>/cmdline`) und in der Shell-History landen.
-2. **Umgebungsvariablen** `ARD_PLUS_USER` und `ARD_PLUS_PASSWORD` - empfohlen, auch für Docker (`docker run -e ...` oder `--env-file`).
+1. **Positionsargumente** `<username> <password>` - **nicht empfohlen**, da sie für alle Prozesse sichtbar sind (`ps`) und in der Shell-History landen
+2. **Umgebungsvariablen** `ARD_PLUS_USER` und `ARD_PLUS_PASSWORD` - empfohlen, auch für Docker
 3. **Zugangsdaten-Datei** `~/.config/ard-plus-dl/credentials` (Pfad via `ARD_PLUS_CREDENTIALS_FILE` änderbar, `chmod 600` empfohlen):
 
    ```ini
@@ -76,91 +141,79 @@ Zugangsdaten werden in dieser Reihenfolge gesucht:
    ```
 
    Als Schlüssel akzeptiert die Datei auch `ARD_PLUS_USER=`, `ARD_PLUS_PASSWORD=` und `ARD_PLUS_TAG=`.
+4. **Interaktive Abfrage** im Start-Bildschirm der TUI bzw. am Terminal, falls nichts davon gesetzt ist
 
-4. **Interaktive Abfrage** beim Login, falls nichts davon gesetzt ist.
+Sobald ein gültiges Session-Token existiert (`~/.local/state/ard-plus-dl/token`, via `XDG_STATE_HOME` verschiebbar), sind für weitere Aufrufe keine Zugangsdaten mehr nötig.
 
-Sobald ein gültiges Session-Token existiert (`~/.local/state/ard-plus-dl/token`, Pfad via `XDG_STATE_HOME` verschiebbar), sind für weitere Aufrufe keine Zugangsdaten mehr nötig.
+### Dateinamen
 
-### Datei-Tag (Pflicht)
+Der eigene Datei-Tag (`ARD_PLUS_TAG`, `tag=...` oder TUI-Eingabe) ist Pflicht und steht in jedem Dateinamen am Ende. Der Medienteil kommt aus ffprobe:
 
-Der Datei-Tag ist ein selbst gewählter Namenszusatz, der an jeden Datei- und Ordnernamen angehängt wird (nach dem letzten `-`). Er dient nur der eigenen Kennzeichnung der Sammlung, zum Beispiel `example`. Er wird in dieser Reihenfolge gesucht und muss angegeben werden:
-
-1. **Umgebungsvariable** `ARD_PLUS_TAG`
-2. **Zugangsdaten-Datei**: `tag=...` bzw. `ARD_PLUS_TAG=...`
-3. **Interaktive Abfrage** beim Start (nur bei TTY; im Batch-Modus nicht)
-
-Erlaubt sind Buchstaben, Ziffern, `.`, `_` und `-`, maximal 16 Zeichen, beginnend mit Buchstabe oder Ziffer. Fehlt die Angabe, endet das Skript mit `Datei-Tag missing!` (Exit 1); ein ungültiger Wert meldet `Invalid Datei-Tag`.
-
-**Beispiele:**
-
-```bash
-# Empfohlen: Zugangsdaten und Datei-Tag per Umgebungsvariablen
-export ARD_PLUS_USER='user' ARD_PLUS_PASSWORD='pass' ARD_PLUS_TAG='example'
-
-# Serie (interaktiv) / Film / Tatort
-./ard-plus-dl.sh 'https://www.ardplus.de/details/a0T0100000064DB-gegen-den-wind'
-./ard-plus-dl.sh 'https://www.ardplus.de/details/a0S01000000EWYi-lola-rennt'
-./ard-plus-dl.sh 'https://www.ardplus.de/kategorie/tatort-bremen'
-
-# Unbeaufsichtigt (eigene Inhalte, gültiges Abo vorausgesetzt)
-./ard-plus-dl.sh --automatic 'https://www.ardplus.de/details/a0T0100000064DB-gegen-den-wind'
-
-# Mehrere URLs - eine pro Zeile, `#`-Kommentare erlaubt (siehe links.txt.example)
-./ard-plus-dl.sh --links-file links.txt
-
-# Weiterhin möglich (nicht empfohlen): Zugangsdaten als Argumente
-./ard-plus-dl.sh 'https://www.ardplus.de/kategorie/tatort-bremen' user pass
+```
+Film:   Title.Year/Title.Year.German.AAC.1080p.Web-DL.x264-<tag>.mp4
+Serie:  Show.S01/Show.S01E01.German.AAC.1080p.Web-DL.x264-<tag>.mp4
+Tatort: Tatort.Bremen.Folge.1200.2024.German.AAC.1080p.Web-DL.x264-<tag>.mp4
 ```
 
-Unterbrochene Downloads einfach erneut starten: Fertige Dateien werden übersprungen (`SKIP (already exists)` im Log), unfertige Downloads behalten ihre Teil-Dateien (`*.part*`) und werden fortgesetzt (yt-dlp `--continue`); liegen gebliebene `.ytdl`-Metadatendateien und Fragmente räumt das Skript dabei auf. `--force-redownload` verwirft sowohl die Ausgabedatei als auch die Datei im bisherigen Schema samt Teil-Dateien und lädt neu. Dateien im bisherigen Schema (`Show/Season 01/Show S01E01 - Titel.mp4`) gelten weiter als vorhanden und werden nicht erneut geladen; Umbenennen ist nicht nötig. Protokolle in `logs/` (`download_log_*`, `successful_links_*`, `failed_links_*`) entstehen nur mit `--links-file`; im Einzelmodus geht die gesamte Ausgabe auf stdout. Ein Batch-Lauf endet mit Exit 1, wenn mindestens ein Link fehlgeschlagen ist; die Fehlermeldungen zu fehlender Link-Datei und fehlender URL gehen auf stderr.
+Staffelverzeichnisse werden wiederverwendet: Existiert bereits ein Verzeichnis `Show.S01.*`, landet die neue Folge dort. Staffeln mit 100 oder mehr Episoden werden dreistellig nummeriert (`S21E001`).
 
-Fehler einzelner Episoden brechen die Serie nicht mehr ab: Die betroffene Episode wird als `FEHLER: …` gemeldet, die restlichen Episoden und Staffeln werden weiter geladen, und der Link gilt mit einer Sammelmeldung wie `1 episode download(s) failed (first: …)` als fehlgeschlagen (`failed_links_*`). Im Batch-Modus landet die yt-dlp-Fehlerausgabe (letzte 20 Zeilen) zusätzlich im Download-Log. Laufzeitfehler bei der Wiedergabe-Autorisierung erneuern einmalig die Session (`Session abgelaufen oder ungültig, neuer Login...`), bevor der Download als fehlgeschlagen gilt; dauerhafte GraphQL-Fehler werden nicht mehr wiederholt.
+### Diagnose
 
-Die interaktive Staffelauswahl wird geprüft: Nur existierende Staffelnummern werden akzeptiert (`1` oder `1,2` bzw. durch Leerzeichen getrennt), ungültige Eingaben führen zu einer erneuten Abfrage, und ein abgebrochener Eingabestrom führt zu `no season selected (input ended)` mit Exit 1. Pathologische Titel werden auf 200 Byte pro Namensbestandteil gekürzt, damit lange Film-, Episoden- und Tatort-Namen auch auf Dateisystemen mit 255-Byte-Grenze (`NAME_MAX`) anlegbar bleiben.
-
-## Unterstützte URLs
-
-| Typ | Beispiel-Pfad | Verhalten |
-|-----|---------------|-----------|
-| Film | `…/details/a0S01000000EWYi-lola-rennt` | Einzeldatei |
-| Serie | `…/details/a0T0100000064DB-gegen-den-wind` | Staffeln/Episoden |
-| Tatort | `…/kategorie/tatort-bremen` | Alle Folgen der Stadt |
-
-## Ausgabe
-
-Standard: `downloads/` neben der Link-Datei bzw. im Arbeitsverzeichnis. Anderes Ziel via `DOWNLOADS_DIR` (Docker: `/data/downloads`).
-
-Dateinamen folgen einem einheitlichen Schema: Titel mit Punkten statt Leerzeichen, `SxxEyy`, Medien-Tags aus `ffprobe` und der Datei-Tag am Ende.
-
-| Typ | Beispiel |
-|-----|----------|
-| Serie | `downloads/Gegen.den.Wind.S01.German.AAC.1080p.Web-DL.x264-example/Gegen.den.Wind.S01E01.German.AAC.1080p.Web-DL.x264-example.mp4` |
-| Film | `downloads/Lola.rennt.1998/Lola.rennt.1998.German.AAC.1080p.Web-DL.x264-example.mp4` |
-| Tatort | `downloads/Tatort.Köln.Folge.850.2019.German.AAC.1080p.Web-DL.x264-example.mp4` |
-
-Der Download läuft zunächst auf den bisherigen Arbeitsnamen (dort greift auch die Fortsetzung mit `*.part*`); nach dem Merge wird die Datei anhand von `ffprobe` benannt und verschoben. Lässt sich `ffprobe` nicht auswerten, behält die Datei den Arbeitsnamen und das Skript meldet eine Warnung. Ein vorhandener Staffelordner wird wiederverwendet, auch wenn er noch einen älteren Datei-Tag trägt.
-
-Staffeln mit 100 oder mehr Folgen werden dreistellig numeriert (`S21E001` … `S21E151`), kürzere Staffeln zweistellig (`S01E01`). Maßgeblich ist die höchste Episodennummer der Staffel.
-
-## Docker (lokal bauen)
-
-Es wird kein vorgefertigtes Container-Image veröffentlicht. Image lokal bauen und ausführen:
+Bei CDN-Fehlern (`HTTP 403`) schreibt `ARD_PLUS_DEBUG_DIR` die Rohdaten des letzten Laufs mit:
 
 ```bash
-git clone https://github.com/revunix/ard-plus-dl.git
-cd ard-plus-dl
+ARD_PLUS_DEBUG_DIR="$PWD/debug" ard-plus-dl 'https://www.ardplus.de/details/...'
+```
+
+- `manifest.mpd` - die geladene DASH-Beschreibung
+- `tracks.txt` - was das Manifest anbietet und was ausgewählt wurde
+- `requests.log` - jede Medien-Anfrage mit Statuszeile; Query-Werte sind durch `…` ersetzt, Tokens landen nicht im Log
+
+### Batch-Modus
+
+`--links-file <datei>` liest eine URL pro Zeile (`#` beginnt einen Kommentar) und schreibt Protokolle nach `<links-dir>/logs/`:
+
+- `successful_links_<zeitstempel>.txt`
+- `failed_links_<zeitstempel>.txt`
+- `download_log_<zeitstempel>.txt`
+
+Der Exit-Code ist 1, sobald ein Link fehlschlägt. Vorlage: [links.txt.example](links.txt.example)
+
+## Docker
+
+```bash
 docker build -t ard-plus-dl .
-docker run --rm -it -v "$(pwd)/:/data" \
-  -e ARD_PLUS_USER='username' -e ARD_PLUS_PASSWORD='password' -e ARD_PLUS_TAG='example' \
-  ard-plus-dl 'https://www.ardplus.de/details/a0T01000003LeBR-vorstadtweiber'
+docker run --rm -it \
+  -e ARD_PLUS_USER=mein-benutzer \
+  -e ARD_PLUS_PASSWORD=mein-passwort \
+  -e ARD_PLUS_TAG=example \
+  -v "$PWD/downloads:/data/downloads" \
+  -v "$PWD/ard-plus-config:/data/ard-plus-dl" \
+  ghcr.io/revunix/ard-plus-dl:latest 'https://www.ardplus.de/details/...'
 ```
 
-`ffmpeg` ist im Image enthalten. Der `ENTRYPOINT` ist `/app/ard-plus-dl.sh`, die Argumente werden direkt angehängt; die frühere Form `ard-plus-dl download '<url>'` funktioniert über den Symlink `/usr/bin/download` weiter. Das Arbeitsverzeichnis im Container ist `/data` (entspricht dem gemounteten Host-Verzeichnis); Downloads landen unter `/data/downloads`. Die Session-Token-Datei liegt unter `/data/ard-plus-dl/token` (`XDG_STATE_HOME=/data`), die Zugangsdaten-Datei wird unter `/data/ard-plus-dl/credentials` gesucht (`XDG_CONFIG_HOME=/data`) und ist damit über den Mount erreichbar. Beides bleibt über `--rm`-Läufe hinweg erhalten, solange `/data` gemountet ist.
+Im Image sind `ffmpeg` und `ffprobe` (Alpine-Paket) enthalten. Fertige Multi-Arch-Images liegen unter `ghcr.io/revunix/ard-plus-dl`.
 
-Alternativ die Variablen in eine Datei schreiben und mit `--env-file` übergeben, damit die Zugangsdaten nicht in der Shell-History landen.
+## Entwicklung
 
-Windows: Host-Pfad mit Backslashes mounten, z. B. `-v C:\Users\Du\Videos:/data`.
+```bash
+go vet ./...
+go test ./... -count=1
+```
 
-## Lizenz & Attribution
+Die End-to-End-Prüfung `TestEndToEndNativeDash` erzeugt mit ffmpeg einen echten DASH-Stream, lädt ihn über einen lokalen HTTP-Server und prüft Dateiname und Stream-Inventar des Ergebnisses.
 
-Basiert auf [marco79cgn/ard-plus-dl](https://github.com/marco79cgn/ard-plus-dl) und dem Fork [chrmei/ard-plus-dl](https://github.com/chrmei/ard-plus-dl), lizenziert unter [Unlicense](LICENSE). Erweiterungen in diesem Fork unter derselben Lizenz.
+Release-Artefakte für alle sechs Ziele (Linux/macOS/Windows × amd64/arm64) baut der GitHub-Actions-Workflow. Ein Tag-Push mit `v*` baut alle sechs Ziele und erstellt ein Release mit den Archiven und `checksums.txt`:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+Die Version wird als `main.version` eingebettet und ist über `ard-plus-dl --version` sichtbar.
+
+Aufbau: `internal/media` (Benennung, ffprobe-Tags), `internal/config` (CLI, Zugangsdaten, Pfade), `internal/auth` (Login, Token), `internal/ardplus` (GraphQL, Wiedergabe-Autorisierung), `internal/dash` (MPD, Auswahl, Segmente, Muxing), `internal/download` (Skip/Finalisierung), `internal/app` (Abläufe), `internal/tui` (Bubble Tea), `internal/cli` (headless Einstieg).
+
+## Lizenz
+
+[Unlicense](LICENSE) - basiert auf [marco79cgn/ard-plus-dl](https://github.com/marco79cgn/ard-plus-dl) und dem Fork [chrmei/ard-plus-dl](https://github.com/chrmei/ard-plus-dl).

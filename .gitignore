@@ -5,3 +5,10 @@ links.txt
 **/*ard-plus-token
 logs/
 **/*.DS_Store
+dist/
+
+/ard-plus-dl
+debug/
+*.db
+*.db-wal
+*.db-shm

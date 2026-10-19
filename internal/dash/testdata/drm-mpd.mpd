@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT8S">
+  <ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc"/>
+  <Period>
+    <AdaptationSet contentType="video" mimeType="video/mp4">
+      <SegmentTemplate timescale="1" duration="4" initialization="init.mp4" media="seg-$Number$.m4s"/>
+      <Representation id="vdrm" bandwidth="100000" width="640" height="360"/>
+    </AdaptationSet>
+  </Period>
+</MPD>

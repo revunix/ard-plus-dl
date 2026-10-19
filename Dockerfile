@@ -1,16 +1,22 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/ard-plus-dl ./cmd/ard-plus-dl
+
 FROM alpine:3.22
-
-RUN apk add --no-cache bash curl ffmpeg yt-dlp jq util-linux perl
-
-WORKDIR /app
-COPY ard-plus-dl.sh ./
-RUN chmod +x /app/ard-plus-dl.sh && ln -s /app/ard-plus-dl.sh /usr/bin/download
+RUN apk add --no-cache ffmpeg ca-certificates
+COPY --from=build /out/ard-plus-dl /usr/bin/ard-plus-dl
+# Convenience alias kept from the previous image.
+RUN ln -s /usr/bin/ard-plus-dl /usr/bin/download
 
 ENV DOWNLOADS_DIR=/data/downloads
 ENV XDG_STATE_HOME=/data
-# Credentials file lives at /data/ard-plus-dl/credentials, i.e. on the mounted volume.
+# The credentials file lives at /data/ard-plus-dl/credentials, on the volume.
 ENV XDG_CONFIG_HOME=/data
 WORKDIR /data
 
-# Arguments are appended directly: docker run ard-plus-dl <url> runs the script.
-ENTRYPOINT ["/app/ard-plus-dl.sh"]
+ENTRYPOINT ["/usr/bin/ard-plus-dl"]

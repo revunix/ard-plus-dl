@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" minBufferTime="PT6S" profiles="urn:mpeg:dash:profile:isoff-main:2011" mediaPresentationDuration="PT48M23.199S">
+  <Period start="PT0S" duration="PT48M23.199S" id="1">
+    <AdaptationSet mimeType="video/mp4" frameRate="25/1" segmentAlignment="true">
+      <SegmentTemplate timescale="90000" duration="648000" startNumber="1"/>
+      <Representation id="1" width="1024" height="576" bandwidth="2500000" codecs="avc1.64001f">
+        <SegmentTemplate media="dashvideo_576_$Number%09d$.mp4" initialization="dashvideo_576init.mp4" duration="648000" startNumber="1"/>
+      </Representation>
+      <Representation id="2" width="640" height="360" bandwidth="800000" codecs="avc1.4d401e">
+        <SegmentTemplate media="dashvideo_360_$Number%09d$.mp4" initialization="dashvideo_360init.mp4" duration="648000" startNumber="1"/>
+      </Representation>
+    </AdaptationSet>
+    <AdaptationSet mimeType="audio/mp4" lang="deu" segmentAlignment="0">
+      <SegmentTemplate timescale="48000" media="dashaudio_20de_$Number%09d$.mp4" initialization="dashaudio_20deinit.mp4" duration="345600" startNumber="1"/>
+      <Representation id="3" bandwidth="96000" audioSamplingRate="48000" codecs="mp4a.40.2">
+        <AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2"/>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>

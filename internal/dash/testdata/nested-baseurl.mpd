@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT8S">
+  <BaseURL>root/</BaseURL>
+  <Period>
+    <BaseURL>period/</BaseURL>
+    <AdaptationSet contentType="video" mimeType="video/mp4">
+      <BaseURL>set/</BaseURL>
+      <SegmentTemplate timescale="1" duration="4" startNumber="1"
+          initialization="init.mp4"
+          media="seg-$Number$.m4s"/>
+      <Representation id="vbase" bandwidth="100000" width="640" height="360">
+        <BaseURL>rep/</BaseURL>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>
