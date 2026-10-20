@@ -19,6 +19,9 @@ const (
 	// stemMaxBytes is shorter because the media tag and the file tag are
 	// appended afterwards.
 	stemMaxBytes = 170
+	// tokenMaxBytes bounds a short API value such as a year or an episode
+	// number.
+	tokenMaxBytes = 32
 )
 
 // windowsNaming is a variable so tests can exercise the Windows rules on any
@@ -126,6 +129,33 @@ func SanitizePathComponent(s string) string {
 	return out
 }
 
+// SanitizeToken makes a short API-provided value (a production year, an
+// episode production number) safe to embed in a path. Only letters, digits,
+// '.', '_' and '-' survive, so the value can neither contain a path separator
+// nor climb out of its directory. Dot runs are collapsed and the result is
+// stripped of leading and trailing dots.
+func SanitizeToken(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			// dropped: separators, spaces and everything else
+		}
+	}
+	out := b.String()
+	for strings.Contains(out, "..") {
+		out = strings.ReplaceAll(out, "..", ".")
+	}
+	out = strings.Trim(out, ".")
+	if out == "" {
+		return ""
+	}
+	return CapComponentBytes(tokenMaxBytes, out)
+}
+
 // CapComponentBytes truncates s so its UTF-8 length stays within max bytes,
 // always on a rune boundary.
 func CapComponentBytes(max int, s string) string {
@@ -176,8 +206,11 @@ func NormalizeURL(raw string) string {
 // downloads directory: "<Title> (<Year>)/<Title> (<Year>)".
 func BuildMoviePath(title, year string) string {
 	safe := cappedTrimmmed(pathComponentMaxBytes, SanitizePathComponent(title))
-	if year != "" {
-		return fmt.Sprintf("%s (%s)/%s", safe, year, safe)
+	// The year comes from the API and must not be able to escape the
+	// downloads directory.
+	safeYear := SanitizeToken(year)
+	if safeYear != "" {
+		return fmt.Sprintf("%s (%s)/%s", safe, safeYear, safe)
 	}
 	return safe + "/" + safe
 }
@@ -201,16 +234,20 @@ func BuildTatortPath(city, team string, episodeNo, title, year string) string {
 	safeCity := SanitizePathComponent(city)
 	safeTeam := SanitizePathComponent(team)
 	safeName := SanitizePathComponent(title)
+	// The episode number and the year come from the API and must not be able
+	// to escape the downloads directory.
+	safeEpisodeNo := SanitizeToken(episodeNo)
+	safeYear := SanitizeToken(year)
 
 	out := "Tatort " + safeCity
 	if team != "" {
 		out = fmt.Sprintf("%s (%s)", out, safeTeam)
 	}
-	if episodeNo != "" {
-		out = fmt.Sprintf("%s - Folge %s", out, episodeNo)
+	if safeEpisodeNo != "" {
+		out = fmt.Sprintf("%s - Folge %s", out, safeEpisodeNo)
 	}
-	if year != "" {
-		out = fmt.Sprintf("%s - %s (%s)", out, safeName, year)
+	if safeYear != "" {
+		out = fmt.Sprintf("%s - %s (%s)", out, safeName, safeYear)
 	} else {
 		out = fmt.Sprintf("%s - %s", out, safeName)
 	}
@@ -256,8 +293,10 @@ func SeasonNameStem(show string, season int) string {
 // MovieNameStem returns "<Title>.<Year>" for the final directory name.
 func MovieNameStem(title, year string) string {
 	stem := DotsComponent(title)
-	if year != "" {
-		stem += "." + year
+	// The year comes from the API and must not be able to escape the
+	// downloads directory.
+	if safe := SanitizeToken(year); safe != "" {
+		stem += "." + safe
 	}
 	return CapComponentBytes(stemMaxBytes, stem)
 }
@@ -265,11 +304,13 @@ func MovieNameStem(title, year string) string {
 // TatortNameStem returns "Tatort.<City>[.Folge.N][.Year]" for the final name.
 func TatortNameStem(city, episodeNo, year string) string {
 	base := "Tatort." + DotsComponent(city)
-	if episodeNo != "" {
-		base += ".Folge." + episodeNo
+	// The episode number and the year come from the API and must not be able
+	// to escape the downloads directory.
+	if safe := SanitizeToken(episodeNo); safe != "" {
+		base += ".Folge." + safe
 	}
-	if year != "" {
-		base += "." + year
+	if safe := SanitizeToken(year); safe != "" {
+		base += "." + safe
 	}
 	return CapComponentBytes(stemMaxBytes, base)
 }

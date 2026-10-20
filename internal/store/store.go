@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -103,7 +104,13 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	// The path is escaped: a "?" or "#" in it would otherwise cut the DSN
+	// short.
+	dsn := (&url.URL{
+		Scheme:   "file",
+		Opaque:   path,
+		RawQuery: "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
+	}).String()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

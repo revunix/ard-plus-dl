@@ -1,6 +1,8 @@
 package ardplus
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,6 +24,7 @@ func noSleep(context.Context, time.Duration) {}
 type step struct {
 	status         int
 	body           string
+	header         http.Header
 	transportError bool
 }
 
@@ -67,6 +70,11 @@ func newSequenceServer(t *testing.T, steps ...step) (*sequenceServer, *httptest.
 			}
 			panic("cannot hijack the test connection")
 		}
+		for key, values := range current.header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
 		w.WriteHeader(current.status)
 		_, _ = io.WriteString(w, current.body)
 	}))
@@ -95,9 +103,9 @@ func newClient(srv *httptest.Server, logs *[]string) *Client {
 		GraphQLURL:  srv.URL + "/ard/graphql",
 		TokenURL:    srv.URL,
 		CategoryURL: srv.URL + "/kategorie",
-		Token:       "stub-token",
 		Sleep:       noSleep,
 	}
+	client.SetToken("stub-token")
 	if logs != nil {
 		client.Logf = func(format string, args ...any) {
 			*logs = append(*logs, fmt.Sprintf(format, args...))
@@ -740,12 +748,79 @@ func TestPlaybackAuthPayload(t *testing.T) {
 	if got := seq.header.Get("Cookie"); got != "sid=stub-token" {
 		t.Fatalf("Cookie = %q", got)
 	}
-	if got := seq.header.Get("Accept-Encoding"); got != "gzip" {
-		t.Fatalf("Accept-Encoding = %q", got)
-	}
 	if got := seq.header.Get("Origin"); got != "https://www.ardplus.de" {
 		t.Fatalf("Origin = %q", got)
 	}
+}
+
+// A gzip-compressed answer must be unpacked. Go's transport only does that
+// when it added the Accept-Encoding header itself, which is why the client
+// must not set that header by hand.
+func TestPlaybackAuthGzipResponse(t *testing.T) {
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	if _, err := gz.Write([]byte(`{"authorizationParams":"token=abc"}`)); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+
+	seq, srv := newSequenceServer(t, step{
+		status: 200,
+		body:   compressed.String(),
+		header: http.Header{"Content-Encoding": []string{"gzip"}},
+	})
+	client := newClient(srv, nil)
+
+	param, err := client.PlaybackAuth(context.Background(), "abc123", "CmsMovie")
+	if err != nil {
+		t.Fatalf("PlaybackAuth: %v", err)
+	}
+	if param != "token=abc" {
+		t.Fatalf("param = %q, want %q", param, "token=abc")
+	}
+	if seq.paths[0] != "/token/session" {
+		t.Fatalf("path = %q", seq.paths[0])
+	}
+}
+
+// The client must not set Accept-Encoding itself: Go only decompresses a gzip
+// answer transparently when its own transport added the header. The
+// recording transport sees the request before the transport touches it.
+func TestPlaybackAuthDoesNotForceAcceptEncoding(t *testing.T) {
+	_, srv := newSequenceServer(t, step{status: 200, body: `{"authorizationParams":"token=abc"}`})
+	recorder := &recordingTransport{base: srv.Client().Transport}
+	client := newClient(srv, nil)
+	client.HTTP = &http.Client{Transport: recorder}
+
+	if _, err := client.PlaybackAuth(context.Background(), "abc123", "CmsMovie"); err != nil {
+		t.Fatalf("PlaybackAuth: %v", err)
+	}
+	if got := recorder.acceptEncoding(); got != "" {
+		t.Fatalf("Accept-Encoding = %q, want it to be left to the transport", got)
+	}
+}
+
+// recordingTransport remembers the Accept-Encoding header of the request as it
+// was before the underlying transport processed it.
+type recordingTransport struct {
+	base http.RoundTripper
+	mu   sync.Mutex
+	seen string
+}
+
+func (r *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	r.seen = req.Header.Get("Accept-Encoding")
+	r.mu.Unlock()
+	return r.base.RoundTrip(req)
+}
+
+func (r *recordingTransport) acceptEncoding() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.seen
 }
 
 func TestPlaybackAuthNullParams(t *testing.T) {

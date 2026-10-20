@@ -474,3 +474,47 @@ func writeFile(t *testing.T, path, content string, mode os.FileMode) {
 		t.Fatalf("WriteFile(%s): %v", path, err)
 	}
 }
+
+// After a download the staging directories must be gone: the work directory
+// with the segments is a child of them, so it has to be removed first.
+func TestFinalizeRemovesTheEmptyStagingDirectories(t *testing.T) {
+	dir := t.TempDir()
+	manager := &Manager{
+		DownloadsDir: dir,
+		FileTag:      "tag",
+		Probe: func(string) (string, error) {
+			return "German.AAC.1080p.Web-DL.x264", nil
+		},
+	}
+	item := Item{
+		StagingPath: "Show/Season 01/Show S01E01 - Episode",
+		FinalGlob:   "Show.S01/Show.S01E01.*",
+		BaseStem:    "Show.S01E01",
+		DirStem:     "Show.S01",
+		DirUsesTag:  true,
+	}
+	staging := manager.StagingPath(item)
+	if err := os.MkdirAll(filepath.Dir(staging), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(staging+".mp4", []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(manager.WorkDir(item), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	final, err := manager.Finalize(item, staging+".mp4")
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+	if _, err := os.Stat(final); err != nil {
+		t.Fatalf("the finished file is missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(staging)); !os.IsNotExist(err) {
+		t.Errorf("the staging directory %q still exists", filepath.Dir(staging))
+	}
+	if _, err := os.Stat(manager.WorkDir(item)); !os.IsNotExist(err) {
+		t.Errorf("the work directory %q still exists", manager.WorkDir(item))
+	}
+}

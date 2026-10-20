@@ -142,7 +142,7 @@ func (a *App) logf(format string, args ...any) {
 }
 
 func (a *App) fail(format string, args ...any) error {
-	return errors.New(fmt.Sprintf(format, args...))
+	return fmt.Errorf(format, args...)
 }
 
 // Run executes the configured mode: one URL or a links file.
@@ -475,10 +475,10 @@ func (a *App) tatortFlow(ctx context.Context, slug string, skip int) error {
 		staging := media.BuildTatortPath(movie.CustomData.Location, movie.CustomData.Team,
 			movie.CustomData.EpisodeProductionNumber, movie.Title, movie.ProductionYear)
 		base := media.TatortNameStem(pick(movie.CustomData.Location, city), movie.CustomData.EpisodeProductionNumber, movie.ProductionYear)
-		finalGlob := ""
-		if movie.CustomData.EpisodeProductionNumber != "" {
-			finalGlob = base + ".*"
-		}
+		// The glob must always be set. Without it an episode that carries no
+		// production number would never be recognised as downloaded and would
+		// be fetched again on every run.
+		finalGlob := base + ".*"
 		item := download.Item{
 			StagingPath: staging,
 			FinalGlob:   finalGlob,

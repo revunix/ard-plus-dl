@@ -367,6 +367,7 @@ func (d *Downloader) mediaURL(rawURL string, track *Track, mode mediaQueryMode) 
 }
 
 func (d *Downloader) fetchSegment(ctx context.Context, track *Track, seg Segment, dest string) error {
+	// A segment that was downloaded completely is kept and not fetched again.
 	if info, err := os.Stat(dest); err == nil && info.Size() > 0 {
 		return nil
 	}
@@ -469,6 +470,10 @@ func (d *Downloader) fetchOnce(ctx context.Context, segURL string, byteRange *By
 	}
 
 	part := dest + ".part"
+	// The part file is written from the start: a half written segment cannot
+	// be continued, because the expected length is not known for every
+	// segment. The completed segments next to it are kept, so the download
+	// continues at segment level.
 	out, err := os.Create(part)
 	if err != nil {
 		return err

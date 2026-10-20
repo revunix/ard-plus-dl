@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -272,6 +271,3 @@ func (s *Session) Release(ctx context.Context, contentID, contentType string) {
 		s.logf("playback cleanup failed: %v", err)
 	}
 }
-
-// Ensure the url package stays referenced for callers that build login URLs.
-var _ = url.Values{}

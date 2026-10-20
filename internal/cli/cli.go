@@ -166,7 +166,14 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 	logs := newLogRouter(stdout)
 	session := buildSession(opts, logs)
-	application := buildApp(opts, session, ffmpeg, ffprobe, stdout, logs, state)
+	debugDir := resolveDebugDir(env)
+	if debugDir != "" {
+		logs.Logf("Diagnose-Dateien landen in: %s", debugDir)
+	}
+	application := buildApp(opts, session, ffmpeg, ffprobe, stdout, logs, state, debugDir)
+	if client, ok := session.Playback.(*ardplus.Client); ok && debugDir != "" {
+		client.Debugf = logs.Logf
+	}
 	persistCredentials(opts, state, secrets)
 
 	if interactive {
@@ -310,11 +317,12 @@ func (r *logRouter) Logf(format string, args ...any) {
 }
 
 func buildSession(opts *config.Options, logs *logRouter) *auth.Session {
-	client := &ardplus.Client{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	transport := httpTransport()
+	client := &ardplus.Client{HTTP: &http.Client{Timeout: 120 * time.Second, Transport: transport}}
 	client.Logf = logs.Logf
 	return &auth.Session{
 		Store:    auth.Store{Path: opts.TokenFile},
-		Login:    &auth.Client{HTTP: &http.Client{Timeout: 120 * time.Second}},
+		Login:    &auth.Client{HTTP: &http.Client{Timeout: 120 * time.Second, Transport: transport}},
 		Playback: client,
 		Username: opts.Username,
 		Password: opts.Password,
@@ -322,13 +330,52 @@ func buildSession(opts *config.Options, logs *logRouter) *auth.Session {
 	}
 }
 
-func buildApp(opts *config.Options, session *auth.Session, ffmpeg, ffprobe string, stdout io.Writer, logs *logRouter, state *store.Store) *app.App {
-	downloader := &dash.Downloader{HTTP: &http.Client{}, Logf: logs.Logf}
+// httpTransport returns the shared transport. The DASH downloader runs
+// several workers against the same host, so the idle connection pool must be
+// larger than the default of two connections per host.
+func httpTransport() *http.Transport {
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil
+	}
+	clone := base.Clone()
+	clone.MaxIdleConns = 64
+	clone.MaxIdleConnsPerHost = 16
+	clone.IdleConnTimeout = 90 * time.Second
+	clone.ForceAttemptHTTP2 = true
+	return clone
+}
+
+// resolveDebugDir returns the directory for the diagnostic files, or "" when
+// the feature is off. The directory is created so the components can write
+// into it right away.
+func resolveDebugDir(env config.Env) string {
+	dir := env("ARD_PLUS_DEBUG_DIR")
+	if dir == "" {
+		return ""
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "Warnung: Diagnose-Verzeichnis nicht anlegbar (%s): %v\n", dir, err)
+		return ""
+	}
+	return dir
+}
+
+func buildApp(opts *config.Options, session *auth.Session, ffmpeg, ffprobe string, stdout io.Writer, logs *logRouter, state *store.Store, debugDir string) *app.App {
+	transport := httpTransport()
+	downloader := &dash.Downloader{HTTP: &http.Client{Transport: transport}, Logf: logs.Logf}
 	muxer := &dash.Muxer{FFmpeg: ffmpeg, Logf: logs.Logf}
 	pipeline := &app.Pipeline{
+		// The manifest request needs a timeout of its own: without one a
+		// stalled connection would block the run indefinitely.
+		HTTP:       &http.Client{Timeout: 60 * time.Second, Transport: transport},
 		Downloader: downloader,
 		Muxer:      muxer,
+		DebugDir:   debugDir,
 		Logf:       logs.Logf,
+	}
+	if debugDir != "" {
+		downloader.DebugDir = debugDir
 	}
 	manager := &download.Manager{
 		DownloadsDir: opts.DownloadsDir,
@@ -427,7 +474,11 @@ func runLibraryMode(ctx context.Context, opts *config.Options, env config.Env, s
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	application := buildApp(opts, session, ffmpeg, ffprobe, stdout, logs, state)
+	debugDir := resolveDebugDir(env)
+	application := buildApp(opts, session, ffmpeg, ffprobe, stdout, logs, state, debugDir)
+	if client, ok := session.Playback.(*ardplus.Client); ok && debugDir != "" {
+		client.Debugf = logs.Logf
+	}
 
 	results, err := application.CheckLibrary(ctx)
 	if err != nil {

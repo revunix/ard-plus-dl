@@ -4,6 +4,7 @@ package ardplus
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/revunix/ard-plus-dl/internal/auth"
@@ -852,7 +854,12 @@ type Client struct {
 	TokenURL    string
 	CategoryURL string
 	UA          string
-	Token       string
+
+	// token is the session cookie value. It is written by SetToken, which the
+	// session calls when it renews the login, while requests read it
+	// concurrently. The mutex keeps that safe.
+	tokenMu sync.RWMutex
+	token   string
 
 	// Attempts and Sleep are injectable for tests.
 	Attempts int
@@ -864,7 +871,18 @@ type Client struct {
 }
 
 // SetToken updates the session cookie value.
-func (c *Client) SetToken(token string) { c.Token = token }
+func (c *Client) SetToken(token string) {
+	c.tokenMu.Lock()
+	c.token = token
+	c.tokenMu.Unlock()
+}
+
+// Token returns the current session cookie value.
+func (c *Client) Token() string {
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
+	return c.token
+}
 
 func (c *Client) ua() string {
 	if c.UA != "" {
@@ -884,6 +902,23 @@ func (c *Client) httpClient() *http.Client {
 		return c.HTTP
 	}
 	return http.DefaultClient
+}
+
+// readResponseBody reads a response body and unpacks it when the server sent
+// it gzip-compressed. Go's transport only decompresses transparently when it
+// added the Accept-Encoding header itself, which is not the case for the
+// requests that set their own headers.
+func readResponseBody(resp *http.Response) ([]byte, error) {
+	var reader io.Reader = resp.Body
+	if strings.EqualFold(strings.TrimSpace(resp.Header.Get("Content-Encoding")), "gzip") {
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("gzip response: %w", err)
+		}
+		defer gz.Close()
+		reader = gz
+	}
+	return io.ReadAll(io.LimitReader(reader, 4<<20))
 }
 
 func (c *Client) sleep(ctx context.Context, d time.Duration) {
@@ -926,8 +961,8 @@ func (c *Client) applyHeaders(req *http.Request) {
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if c.Token != "" {
-		req.Header.Set("Cookie", "sid="+c.Token)
+	if token := c.Token(); token != "" {
+		req.Header.Set("Cookie", "sid="+token)
 	}
 	req.Header.Set("Origin", "https://www.ardplus.de")
 	req.Header.Set("Referer", "https://www.ardplus.de/")
@@ -1307,14 +1342,16 @@ func (c *Client) PlaybackAuth(ctx context.Context, contentID, contentType string
 		return "", err
 	}
 	c.applyHeaders(req)
-	req.Header.Set("Accept-Encoding", "gzip")
+	// The Accept-Encoding header is deliberately not set: Go only decompresses
+	// a gzip response transparently when it added the header itself. The
+	// response is therefore unpacked by hand below.
 
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	data, err := readResponseBody(resp)
 	if err != nil {
 		return "", err
 	}

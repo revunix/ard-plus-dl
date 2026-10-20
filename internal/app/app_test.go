@@ -335,6 +335,15 @@ func (f *fakeFetcher) muxList() []string {
 	return append([]string(nil), f.muxes...)
 }
 
+// reset forgets the recorded calls, so a second run can be observed on its
+// own.
+func (f *fakeFetcher) reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fetches = nil
+	f.muxes = nil
+}
+
 type seasonCall struct {
 	show    string
 	seasons []Season
@@ -1211,5 +1220,47 @@ func TestReadLinksMissingFile(t *testing.T) {
 	_, err := readLinks(path)
 	if err == nil || err.Error() != "Links file missing or not found: "+path {
 		t.Fatalf("readLinks error = %v, want Links file missing or not found", err)
+	}
+}
+
+// An episode without a production number must still be recognised as
+// downloaded on the next run.
+func TestTatortFlowSkipsAnEpisodeWithoutProductionNumber(t *testing.T) {
+	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: true, Skip: 1, FileTag: "example"}
+	h := newHarness(t, opts)
+	h.backend.setCategory(func(string) (string, int) {
+		return tatortHTML("https://www.ardplus.de/details/t1"), http.StatusOK
+	})
+	h.backend.setGraphQL(func(_ string, variables map[string]any) (string, int) {
+		id, _ := variables["movieId"].(string)
+		if id != "t1" {
+			return graphQLErrorResponse("unknown tatort episode " + id)
+		}
+		// No episode production number: the file name is built from the
+		// location and the year alone.
+		return dataResponse(map[string]any{
+			"movie":  tatortMovieData("t1", "Der Fall", "2023", "koeln", "Team A", "", "https://cdn.test/t1.mpd"),
+			"series": nil,
+		})
+	})
+
+	if err := h.run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if fetches := h.fetcher.fetchList(); len(fetches) != 1 {
+		t.Fatalf("Fetch calls = %v, want one episode", fetches)
+	}
+	final := filepath.Join(h.downloads, "Tatort.koeln.2023."+harnessMediaTag+"-example.mp4")
+	if _, err := os.Stat(final); err != nil {
+		t.Fatalf("missing %s: %v", final, err)
+	}
+
+	// The second run must skip the episode instead of downloading it again.
+	h.fetcher.reset()
+	if err := h.run(); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	if fetches := h.fetcher.fetchList(); len(fetches) != 0 {
+		t.Fatalf("the second run must not download the episode again, fetches = %v", fetches)
 	}
 }

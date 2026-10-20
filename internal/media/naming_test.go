@@ -388,3 +388,60 @@ func TestMediaLabels(t *testing.T) {
 		}
 	})
 }
+
+func TestSanitizeToken(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"keeps a year", "2024", "2024"},
+		{"keeps an episode number", "1200", "1200"},
+		{"drops path separators", "../../etc", "etc"},
+		{"drops a leading dot run", "../../../etc/passwd", "etcpasswd"},
+		{"collapses dot runs", "a..b", "a.b"},
+		{"drops spaces and slashes", "12/34 56", "123456"},
+		{"trims outer dots", ".hidden.", "hidden"},
+		{"empty stays empty", "", ""},
+		{"only separators becomes empty", "../..", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := SanitizeToken(tc.in); got != tc.want {
+				t.Fatalf("SanitizeToken(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// The year and the episode number come from the API and end up in file and
+// directory names. They must never be able to leave the downloads directory.
+func TestAPIValuesCannotEscapeDownloadsDir(t *testing.T) {
+	const downloads = "/data/downloads"
+	hostile := []string{
+		"../../../../../../etc/cron.d/pwn",
+		"..",
+		"/etc/passwd",
+		"....//....//etc",
+		"a/b/../../../c",
+	}
+
+	for _, value := range hostile {
+		t.Run(value, func(t *testing.T) {
+			paths := []string{
+				BuildMoviePath("Some Movie", value),
+				BuildTatortPath("Köln", "Team", value, "Episode", "2024"),
+				BuildTatortPath("Köln", "Team", "1200", "Episode", value),
+				MovieNameStem("Some Movie", value),
+				TatortNameStem("Köln", value, "2024"),
+				TatortNameStem("Köln", "1200", value),
+			}
+			for _, path := range paths {
+				joined := filepath.Join(downloads, filepath.FromSlash(path))
+				rel, err := filepath.Rel(downloads, joined)
+				if err != nil {
+					t.Fatalf("Rel(%q, %q): %v", downloads, joined, err)
+				}
+				if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+					t.Errorf("%q escapes the downloads directory: %q", path, joined)
+				}
+			}
+		})
+	}
+}

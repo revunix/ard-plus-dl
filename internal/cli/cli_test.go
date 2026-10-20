@@ -3,10 +3,14 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/revunix/ard-plus-dl/internal/app"
+	"github.com/revunix/ard-plus-dl/internal/config"
 )
 
 // cliEnv is an isolated HOME/XDG environment plus a temp downloads directory.
@@ -457,5 +461,57 @@ func TestLogRouterReroutesComponentOutput(t *testing.T) {
 	}
 	if len(routed) != 1 || routed[0] != "zweite Zeile" {
 		t.Fatalf("routed lines = %v, want the TUI line", routed)
+	}
+}
+
+func TestResolveDebugDirCreatesTheDirectory(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "debug")
+
+	env := func(key string) string {
+		if key == "ARD_PLUS_DEBUG_DIR" {
+			return dir
+		}
+		return ""
+	}
+	got := resolveDebugDir(env)
+	if got != dir {
+		t.Fatalf("resolveDebugDir = %q, want %q", got, dir)
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("the debug directory must exist: %v", err)
+	}
+}
+
+func TestResolveDebugDirIsOffWithoutTheVariable(t *testing.T) {
+	if got := resolveDebugDir(func(string) string { return "" }); got != "" {
+		t.Fatalf("resolveDebugDir = %q, want an empty string", got)
+	}
+}
+
+// The debug directory must reach the downloader, the pipeline and the API
+// client, otherwise the documented diagnostic files never appear.
+func TestBuildAppWiresTheDebugDirectory(t *testing.T) {
+	dir := t.TempDir()
+	opts := &config.Options{DownloadsDir: dir, FileTag: "tag", TokenFile: filepath.Join(dir, "token")}
+	logs := newLogRouter(io.Discard)
+	session := buildSession(opts, logs)
+	application := buildApp(opts, session, "ffmpeg", "ffprobe", io.Discard, logs, nil, dir)
+
+	pipeline, ok := application.Fetcher.(*app.Pipeline)
+	if !ok {
+		t.Fatalf("Fetcher = %T, want *app.Pipeline", application.Fetcher)
+	}
+	if pipeline.DebugDir != dir {
+		t.Errorf("Pipeline.DebugDir = %q, want %q", pipeline.DebugDir, dir)
+	}
+	if pipeline.Downloader == nil || pipeline.Downloader.DebugDir != dir {
+		t.Errorf("Downloader.DebugDir = %q, want %q", pipeline.Downloader.DebugDir, dir)
+	}
+	if pipeline.HTTP == nil {
+		t.Error("the pipeline must have an HTTP client with a timeout")
+	} else if pipeline.HTTP.Timeout == 0 {
+		t.Error("the manifest request must have a timeout")
 	}
 }

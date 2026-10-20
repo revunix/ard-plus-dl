@@ -57,8 +57,11 @@ func (m *Manager) WorkDir(item Item) string {
 // base name, e.g. ".f137" in "<base>.f137.mp4".
 var legacyFragmentPattern = regexp.MustCompile(`^\.f[0-9]+`)
 
-// CleanupLegacy removes yt-dlp bookkeeping leftovers of previous versions but
-// keeps *.part* files, which are still resumable.
+// CleanupLegacy removes yt-dlp bookkeeping leftovers of previous versions.
+// The DASH segment files are kept: a segment that was downloaded completely
+// is not fetched again, so an interrupted download continues where it
+// stopped. A half written segment (the "*.part" file) is not resumable and
+// is therefore fetched again from the start.
 func (m *Manager) CleanupLegacy(stagingPath string) {
 	dir := filepath.Dir(stagingPath)
 	base := filepath.Base(stagingPath)
@@ -200,14 +203,24 @@ func (m *Manager) Finalize(item Item, stagingFile string) (string, error) {
 	}
 	m.logf("Benannt: %s", target)
 
+	// The work directory with the downloaded segments must be gone before the
+	// empty staging directories are removed: it is a child of them, and a
+	// directory that still has content cannot be removed.
+	_ = os.RemoveAll(m.WorkDir(item))
+
+	// Remove the now empty staging directories, from the deepest one up to
+	// the downloads directory.
 	stale := filepath.Dir(stagingFile)
-	for stale != m.DownloadsDir && strings.HasPrefix(stale, m.DownloadsDir) {
+	for stale != m.DownloadsDir {
+		rel, err := filepath.Rel(m.DownloadsDir, stale)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			break
+		}
 		if err := os.Remove(stale); err != nil {
 			break
 		}
 		stale = filepath.Dir(stale)
 	}
-	_ = os.RemoveAll(m.WorkDir(item))
 	return target, nil
 }
 
