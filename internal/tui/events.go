@@ -41,7 +41,7 @@ func (m *Model) applyEvent(event app.Event) {
 
 // jobIndex resolves the job an event belongs to: the last job with a matching
 // label, or -1 when the event carries no label or none matches.
-func (m Model) jobIndex(label string) int {
+func (m *Model) jobIndex(label string) int {
 	if label == "" {
 		return -1
 	}

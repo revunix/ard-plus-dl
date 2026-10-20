@@ -49,13 +49,18 @@ func (p *Pipeline) ua() string {
 
 // Fetch downloads every selected track of the manifest into workDir.
 func (p *Pipeline) Fetch(ctx context.Context, manifestURL, workDir string, progress func(done, total int)) ([]dash.DownloadedTrack, error) {
+	if p.Downloader == nil {
+		return nil, errors.New("no downloader configured")
+	}
+	// The manifest URL carries the playback token, so the error messages must
+	// not repeat it.
 	parsed, err := url.Parse(manifestURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid manifest URL: %w", err)
+		return nil, fmt.Errorf("invalid manifest URL: %s", dash.RedactURL(manifestURL))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid manifest request: %s", dash.RedactURL(manifestURL))
 	}
 	// Only the user agent is sent: that is what the previously working yt-dlp
 	// pipeline did, while the CDN reacts to unexpected headers with 403.
@@ -126,6 +131,9 @@ func (p *Pipeline) Fetch(ctx context.Context, manifestURL, workDir string, progr
 
 // Mux concatenates and muxes the downloaded tracks into out+".mp4".
 func (p *Pipeline) Mux(ctx context.Context, workDir string, tracks []dash.DownloadedTrack, out string) error {
+	if p.Muxer == nil {
+		return errors.New("no muxer configured")
+	}
 	return p.Muxer.Mux(ctx, workDir, tracks, out)
 }
 

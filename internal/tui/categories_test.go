@@ -12,7 +12,7 @@ import (
 
 // The Tatort archive is large, so nothing may be preselected there.
 func TestCategoriesScreenPreselectsNothing(t *testing.T) {
-	model := *newModel(Options{Config: &config.Options{}})
+	model := newModel(Options{Config: &config.Options{}})
 	model.seriesOffset = 5
 	reply := make(chan []string, 1)
 	updated, _ := model.Update(CategoriesRequest{
@@ -23,7 +23,7 @@ func TestCategoriesScreenPreselectsNothing(t *testing.T) {
 		},
 		Reply: reply,
 	})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if model.seriesOffset != 0 {
 		t.Fatalf("seriesOffset = %d, want it reset for the category list", model.seriesOffset)
 	}
@@ -38,7 +38,7 @@ func TestCategoriesScreenPreselectsNothing(t *testing.T) {
 
 	// Enter without a selection must not answer.
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
+	model = updated.(*Model)
 	select {
 	case slugs := <-reply:
 		t.Fatalf("enter without a selection replied %v", slugs)
@@ -47,26 +47,26 @@ func TestCategoriesScreenPreselectsNothing(t *testing.T) {
 
 	// Space toggles the highlighted category, "a" all of them.
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if !strings.Contains(model.View(), "[x]") {
 		t.Fatalf("space did not select the entry:\n%s", model.View())
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if got := strings.Count(model.View(), "[x]"); got != 2 {
 		t.Fatalf("'a' selected %d entries, want 2:\n%s", got, model.View())
 	}
 
 	// Back to a single selection, then confirm.
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
-	model = updated.(Model)
+	model = updated.(*Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	model = updated.(Model)
+	model = updated.(*Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
-	model = updated.(Model)
+	model = updated.(*Model)
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
+	model = updated.(*Model)
 	select {
 	case slugs := <-reply:
 		if len(slugs) != 1 || slugs[0] != "tatort-koeln" {
@@ -82,14 +82,14 @@ func TestCategoriesScreenPreselectsNothing(t *testing.T) {
 
 // A season request still preselects everything and answers with numbers.
 func TestSeasonSelectionStillPreselectsAll(t *testing.T) {
-	model := *newModel(Options{Config: &config.Options{}})
+	model := newModel(Options{Config: &config.Options{}})
 	reply := make(chan []int, 1)
 	updated, _ := model.Update(SeasonsRequest{
 		Show:    "Test Show",
 		Seasons: []app.Season{{Number: 1, Title: "Erste"}, {Number: 2, Title: "Zweite"}},
 		Reply:   reply,
 	})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if got := strings.Count(model.View(), "[x]"); got != 2 {
 		t.Fatalf("seasons preselected = %d, want 2:\n%s", got, model.View())
 	}

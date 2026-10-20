@@ -24,7 +24,7 @@ func TestViewsRender(t *testing.T) {
 	cfg := &config.Options{FileTag: "example"}
 
 	t.Run("start", func(t *testing.T) {
-		model := *newModel(Options{Config: cfg, StartScreen: true, NeedsLogin: true, Run: noop})
+		model := newModel(Options{Config: cfg, StartScreen: true, NeedsLogin: true, Run: noop})
 		view := model.View()
 		for _, want := range []string{"Start", "URL", "Benutzer", "Passwort", "Datei-Tag", "starten", "▸"} {
 			if !strings.Contains(view, want) {
@@ -34,7 +34,7 @@ func TestViewsRender(t *testing.T) {
 	})
 
 	t.Run("series", func(t *testing.T) {
-		model := *newModel(Options{Config: cfg, Run: noop})
+		model := newModel(Options{Config: cfg, Run: noop})
 		reply := make(chan []int, 1)
 		updated, _ := model.Update(SeasonsRequest{
 			Show: "Test Show",
@@ -44,7 +44,7 @@ func TestViewsRender(t *testing.T) {
 			},
 			Reply: reply,
 		})
-		view := updated.(Model).View()
+		view := updated.(*Model).View()
 		for _, want := range []string{"Test Show", "Staffel 1", "Staffel 2", "[x]", "▸", "wählen"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("series view misses %q:\n%s", want, view)
@@ -53,11 +53,11 @@ func TestViewsRender(t *testing.T) {
 	})
 
 	t.Run("queue progress", func(t *testing.T) {
-		model := *newModel(Options{Config: cfg, AutoStart: true, Run: noop})
+		model := newModel(Options{Config: cfg, AutoStart: true, Run: noop})
 		updated, _ := model.Update(EventMsg{Event: app.Event{Kind: app.EventQueued, Label: "Folge 1"}})
-		model = updated.(Model)
+		model = updated.(*Model)
 		updated, _ = model.Update(EventMsg{Event: app.Event{Kind: app.EventProgress, Label: "Folge 1", Done: 3, Total: 4}})
-		model = updated.(Model)
+		model = updated.(*Model)
 		view := model.View()
 		for _, want := range []string{"Downloads", "Datei 1 von 1", "Folge 1", "lädt", progressLabel(3, 4), "abbrechen"} {
 			if !strings.Contains(view, want) {
@@ -66,24 +66,24 @@ func TestViewsRender(t *testing.T) {
 		}
 
 		updated, _ = model.Update(EventMsg{Event: app.Event{Kind: app.EventDone, Label: "Folge 1", Path: "/tmp/out.mp4"}})
-		if view := updated.(Model).View(); !strings.Contains(view, "1 fertig") || !strings.Contains(view, "/tmp/out.mp4") {
+		if view := updated.(*Model).View(); !strings.Contains(view, "1 fertig") || !strings.Contains(view, "/tmp/out.mp4") {
 			t.Fatalf("finished job or output path is not rendered:\n%s", view)
 		}
 	})
 
 	t.Run("summary", func(t *testing.T) {
-		model := *newModel(Options{Config: cfg, Run: noop})
+		model := newModel(Options{Config: cfg, Run: noop})
 		updated, _ := model.Update(RunDoneMsg{Err: nil})
-		view := updated.(Model).View()
-		if !strings.Contains(view, "Fertig") || !strings.Contains(view, "✓") || updated.(Model).ExitCode() != 0 {
-			t.Fatalf("summary view wrong:\n%s (exit %d)", view, updated.(Model).ExitCode())
+		view := updated.(*Model).View()
+		if !strings.Contains(view, "Fertig") || !strings.Contains(view, "✓") || updated.(*Model).ExitCode() != 0 {
+			t.Fatalf("summary view wrong:\n%s (exit %d)", view, updated.(*Model).ExitCode())
 		}
 	})
 
 	t.Run("window size", func(t *testing.T) {
-		model := *newModel(Options{Config: cfg, StartScreen: true, Run: noop})
+		model := newModel(Options{Config: cfg, StartScreen: true, Run: noop})
 		updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-		if got := updated.(Model); got.width != 100 || got.height != 40 {
+		if got := updated.(*Model); got.width != 100 || got.height != 40 {
 			t.Fatalf("window size not stored: %+v", got)
 		}
 	})
@@ -93,8 +93,8 @@ func TestDownloadQueueStacksFullWidth(t *testing.T) {
 	longLabel := "Tatort Duisburg - Folge 252 - Der Fall Horst Schimanski mit einem sehr langen Dateinamen der bis zum Ende sichtbar bleiben soll"
 	longPath := "/downloads/Tatort Duisburg/Der Fall Horst Schimanski/der-sehr-lange-dateiname-fuer-den-test.mp4"
 
-	build := func(width int) Model {
-		model := *newModel(Options{Config: &config.Options{FileTag: "example"}})
+	build := func(width int) *Model {
+		model := newModel(Options{Config: &config.Options{FileTag: "example"}})
 		model.screen = ScreenQueue
 		model.width = width
 		model.height = 30
@@ -649,14 +649,14 @@ func TestPluralCounts(t *testing.T) {
 	}
 }
 
-func newTestModel(width, height int) Model {
+func newTestModel(width, height int) *Model {
 	noop := func(context.Context) error { return nil }
-	model := *newModel(Options{Config: &config.Options{FileTag: "example"}, Run: noop})
+	model := newModel(Options{Config: &config.Options{FileTag: "example"}, Run: noop})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: height})
-	return updated.(Model)
+	return updated.(*Model)
 }
 
-func populatedScreen(name string, width, height int) Model {
+func populatedScreen(name string, width, height int) *Model {
 	model := newTestModel(width, height)
 	longText := strings.Repeat("sehr langer Titel mit vielen Wörtern ", 4)
 

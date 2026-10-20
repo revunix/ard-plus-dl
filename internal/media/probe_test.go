@@ -1,6 +1,7 @@
 package media
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -45,7 +46,7 @@ func TestProbeMediaTag(t *testing.T) {
 			`{"codec_type":"audio","codec_name":"ac3","channels":6,"tags":{"language":"ger"}}]}`
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		tag, err := ProbeMediaTag(fakeFFprobe(t, json, 0, ""), file)
+		tag, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, json, 0, ""), file)
 		if err != nil {
 			t.Fatalf("ProbeMediaTag: %v", err)
 		}
@@ -61,7 +62,7 @@ func TestProbeMediaTag(t *testing.T) {
 			`{"codec_type":"audio","codec_name":"aac","channels":2,"tags":{"language":"eng"}}]}`
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		tag, err := ProbeMediaTag(fakeFFprobe(t, json, 0, ""), file)
+		tag, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, json, 0, ""), file)
 		if err != nil {
 			t.Fatalf("ProbeMediaTag: %v", err)
 		}
@@ -78,7 +79,7 @@ func TestProbeMediaTag(t *testing.T) {
 					`{"codec_type":"audio","codec_name":"eac3","channels":6,"tags":{"language":"` + lang + `"}}]}`
 				file := filepath.Join(t.TempDir(), "video.mp4")
 				writeFile(t, file, "video", 0o644)
-				tag, err := ProbeMediaTag(fakeFFprobe(t, json, 0, ""), file)
+				tag, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, json, 0, ""), file)
 				if err != nil {
 					t.Fatalf("ProbeMediaTag: %v", err)
 				}
@@ -96,7 +97,7 @@ func TestProbeMediaTag(t *testing.T) {
 			`{"codec_type":"audio","codec_name":"ac3","channels":6,"tags":{"language":"fra"}}]}`
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		tag, err := ProbeMediaTag(fakeFFprobe(t, json, 0, ""), file)
+		tag, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, json, 0, ""), file)
 		if err != nil {
 			t.Fatalf("ProbeMediaTag: %v", err)
 		}
@@ -109,7 +110,7 @@ func TestProbeMediaTag(t *testing.T) {
 		json := `{"streams":[{"codec_type":"video","codec_name":"h264","height":720}]}`
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		tag, err := ProbeMediaTag(fakeFFprobe(t, json, 0, ""), file)
+		tag, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, json, 0, ""), file)
 		if err != nil {
 			t.Fatalf("ProbeMediaTag: %v", err)
 		}
@@ -124,7 +125,7 @@ func TestProbeMediaTag(t *testing.T) {
 			`{"codec_type":"audio","codec_name":"dtsx","channels":2,"tags":{"language":"ger"}}]}`
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		tag, err := ProbeMediaTag(fakeFFprobe(t, json, 0, ""), file)
+		tag, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, json, 0, ""), file)
 		if err != nil {
 			t.Fatalf("ProbeMediaTag: %v", err)
 		}
@@ -139,7 +140,7 @@ func TestProbeMediaTag(t *testing.T) {
 			`{"codec_type":"audio","codec_name":"dts","channels":8,"profile":"DTS-HD MA","tags":{"language":"ger"}}]}`
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		tag, err := ProbeMediaTag(fakeFFprobe(t, json, 0, ""), file)
+		tag, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, json, 0, ""), file)
 		if err != nil {
 			t.Fatalf("ProbeMediaTag: %v", err)
 		}
@@ -151,7 +152,7 @@ func TestProbeMediaTag(t *testing.T) {
 	t.Run("ffprobe failure is reported", func(t *testing.T) {
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		if _, err := ProbeMediaTag(fakeFFprobe(t, "", 1, ""), file); err == nil {
+		if _, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, "", 1, ""), file); err == nil {
 			t.Fatal("expected an error for a failing ffprobe")
 		}
 	})
@@ -159,7 +160,7 @@ func TestProbeMediaTag(t *testing.T) {
 	t.Run("no JSON output is reported", func(t *testing.T) {
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		_, err := ProbeMediaTag(fakeFFprobe(t, "  \n", 0, ""), file)
+		_, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, "  \n", 0, ""), file)
 		if !errors.Is(err, ErrNoMediaInfo) {
 			t.Fatalf("err = %v, want ErrNoMediaInfo", err)
 		}
@@ -168,7 +169,7 @@ func TestProbeMediaTag(t *testing.T) {
 	t.Run("unparseable JSON is reported", func(t *testing.T) {
 		file := filepath.Join(t.TempDir(), "video.mp4")
 		writeFile(t, file, "video", 0o644)
-		if _, err := ProbeMediaTag(fakeFFprobe(t, "not json at all", 0, ""), file); err == nil {
+		if _, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, "not json at all", 0, ""), file); err == nil {
 			t.Fatal("expected an error for unparseable output")
 		}
 	})
@@ -180,7 +181,7 @@ func TestProbeMediaTagPassesTheExpectedCommandLine(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "my video.mp4")
 	writeFile(t, file, "video", 0o644)
 
-	if _, err := ProbeMediaTag(fakeFFprobe(t, json, 0, argsFile), file); err != nil {
+	if _, err := ProbeMediaTag(context.Background(), fakeFFprobe(t, json, 0, argsFile), file); err != nil {
 		t.Fatalf("ProbeMediaTag: %v", err)
 	}
 	recorded, err := os.ReadFile(argsFile)

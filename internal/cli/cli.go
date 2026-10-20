@@ -149,14 +149,14 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if !interactive {
 		if opts.FileTag == "" && stdinTTY {
 			fmt.Fprint(stdout, "Datei-Tag (z. B. example): ")
-			opts.FileTag = readLine(stdin)
+			opts.FileTag = readLine(ctx, stdin)
 		}
 		if err := config.ValidateFileTag(opts.FileTag); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
 		if !hasToken && (opts.Username == "" || opts.Password == "") && stdinTTY {
-			promptCredentials(opts, stdin, stdout, stdinFile)
+			promptCredentials(ctx, opts, stdin, stdout, stdinFile)
 		}
 		if !hasToken && (opts.Username == "" || opts.Password == "") {
 			fmt.Fprint(stderr, credentialsHelp(opts))
@@ -225,7 +225,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		application.Logf = nil
 		application.UI = ui
 		final, runErr := ui.Program().Run()
-		model, isModel := final.(tui.Model)
+		// The program holds the model as a pointer, so the final model is a
+		// *tui.Model as well.
+		model, isModel := final.(*tui.Model)
 		if isModel {
 			model.Close()
 		}
@@ -381,7 +383,7 @@ func buildApp(opts *config.Options, session *auth.Session, ffmpeg, ffprobe strin
 		DownloadsDir: opts.DownloadsDir,
 		FileTag:      opts.FileTag,
 		Force:        opts.ForceRedownload,
-		Probe:        func(path string) (string, error) { return media.ProbeMediaTag(ffprobe, path) },
+		Probe:        func(ctx context.Context, path string) (string, error) { return media.ProbeMediaTag(ctx, ffprobe, path) },
 		Logf:         logs.Logf,
 	}
 	application := &app.App{
@@ -446,7 +448,7 @@ func runLibraryMode(ctx context.Context, opts *config.Options, env config.Env, s
 		}
 		if opts.FileTag == "" && stdinTTY {
 			fmt.Fprint(stdout, "Datei-Tag (z. B. example): ")
-			opts.FileTag = readLine(stdin)
+			opts.FileTag = readLine(ctx, stdin)
 		}
 		if err := config.ValidateFileTag(opts.FileTag); err != nil {
 			fmt.Fprintln(stderr, err)
@@ -591,10 +593,19 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func readLine(reader io.Reader) string {
+// readLine reads one line from the reader. It gives up when the context is
+// cancelled, so that Ctrl+C does not leave the process in a prompt.
+func readLine(ctx context.Context, reader io.Reader) string {
 	buf := make([]byte, 0, 64)
 	one := make([]byte, 1)
 	for {
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return ""
+			default:
+			}
+		}
 		n, err := reader.Read(one)
 		if n > 0 {
 			if one[0] == '\n' {
@@ -609,10 +620,10 @@ func readLine(reader io.Reader) string {
 	return strings.TrimSpace(string(buf))
 }
 
-func promptCredentials(opts *config.Options, stdin io.Reader, stdout io.Writer, stdinFile *os.File) {
+func promptCredentials(ctx context.Context, opts *config.Options, stdin io.Reader, stdout io.Writer, stdinFile *os.File) {
 	if opts.Username == "" {
 		fmt.Fprint(stdout, "ARD Plus username: ")
-		opts.Username = readLine(stdin)
+		opts.Username = readLine(ctx, stdin)
 	}
 	if opts.Password == "" {
 		fmt.Fprint(stdout, "ARD Plus password: ")
@@ -623,7 +634,7 @@ func promptCredentials(opts *config.Options, stdin io.Reader, stdout io.Writer, 
 				return
 			}
 		}
-		opts.Password = readLine(stdin)
+		opts.Password = readLine(ctx, stdin)
 	}
 }
 
@@ -706,7 +717,7 @@ func (u *headlessUI) Event(event app.Event) {
 	}
 }
 
-func (u *headlessUI) SelectSeasons(_ context.Context, show string, seasons []app.Season) ([]int, error) {
+func (u *headlessUI) SelectSeasons(ctx context.Context, show string, seasons []app.Season) ([]int, error) {
 	if !u.interactive {
 		return nil, errors.New("no season selected (input ended)")
 	}
@@ -715,8 +726,11 @@ func (u *headlessUI) SelectSeasons(_ context.Context, show string, seasons []app
 	}
 	for {
 		fmt.Fprintf(u.out, "Welche Staffel möchtest du runterladen? ")
-		raw := readLine(u.in)
+		raw := readLine(ctx, u.in)
 		if raw == "" {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			return nil, errors.New("no season selected (input ended)")
 		}
 		var selected []int
@@ -736,7 +750,7 @@ func (u *headlessUI) SelectSeasons(_ context.Context, show string, seasons []app
 	}
 }
 
-func (u *headlessUI) SelectCategories(_ context.Context, title string, categories []app.Category) ([]string, error) {
+func (u *headlessUI) SelectCategories(ctx context.Context, title string, categories []app.Category) ([]string, error) {
 	if !u.interactive {
 		return nil, errors.New("no category selected (input ended)")
 	}
@@ -746,8 +760,11 @@ func (u *headlessUI) SelectCategories(_ context.Context, title string, categorie
 	}
 	for {
 		fmt.Fprintf(u.out, "Welche Kategorien? (Nummern, 'alle') ")
-		raw := strings.ToLower(readLine(u.in))
+		raw := strings.ToLower(readLine(ctx, u.in))
 		if raw == "" {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			return nil, errors.New("no category selected (input ended)")
 		}
 		if raw == "alle" || raw == "all" {
@@ -774,12 +791,18 @@ func (u *headlessUI) SelectCategories(_ context.Context, title string, categorie
 	}
 }
 
-func (u *headlessUI) AskTatortSkip(_ context.Context, _ string, _ int) (int, error) {
+func (u *headlessUI) AskTatortSkip(ctx context.Context, _ string, _ int) (int, error) {
 	if !u.interactive {
 		return 0, nil
 	}
 	fmt.Fprintf(u.out, "Wie viele Episoden möchtest du überspringen? (0=alle laden) ")
-	raw := readLine(u.in)
+	raw := readLine(ctx, u.in)
+	if raw == "" {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		return 0, nil
+	}
 	number, err := parseSeasonNumber(raw)
 	if err != nil {
 		return 0, nil

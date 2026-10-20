@@ -16,7 +16,7 @@ import (
 
 func TestDetailsViewShowsEpisodeState(t *testing.T) {
 	now := time.Now()
-	model := *newModel(Options{Config: &config.Options{FileTag: "example"}})
+	model := newModel(Options{Config: &config.Options{FileTag: "example"}})
 	model.details = store.Series{ID: 1, URL: "https://www.ardplus.de/details/x", Title: "Test Show", Kind: store.KindSeries}
 	model.episodes = []store.KnownEpisode{
 		{EpisodeRef: store.EpisodeRef{ID: "a", Title: "Zweite Folge", Season: 1, Number: 2}},
@@ -36,7 +36,7 @@ func TestDetailsViewShowsEpisodeState(t *testing.T) {
 
 // Categories have no season/episode numbers, so the label column disappears.
 func TestDetailsViewWithoutEpisodeNumbers(t *testing.T) {
-	model := *newModel(Options{Config: &config.Options{}})
+	model := newModel(Options{Config: &config.Options{}})
 	model.details = store.Series{ID: 1, Title: "Ballauf und Schenk", Kind: store.KindTatort}
 	model.episodes = []store.KnownEpisode{
 		{EpisodeRef: store.EpisodeRef{ID: "a", Title: "Die Schöpfung"}},
@@ -53,7 +53,7 @@ func TestDetailsViewWithoutEpisodeNumbers(t *testing.T) {
 
 func TestDetailsSelectionAndDownload(t *testing.T) {
 	var gotIDs []string
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		DownloadEpisodes: func(_ context.Context, _ store.Series, ids []string) error {
 			gotIDs = ids
@@ -69,7 +69,7 @@ func TestDetailsSelectionAndDownload(t *testing.T) {
 
 	// Space selects one episode; the download uses exactly that selection.
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeySpace})
-	model = updated.(Model)
+	model = updated.(*Model)
 	cmd := model.downloadDetails()
 	if cmd == nil {
 		t.Fatal("no download command")
@@ -94,11 +94,11 @@ func TestDetailsSelectionAndDownload(t *testing.T) {
 }
 
 func TestDetailsEscapeReturnsToLibrary(t *testing.T) {
-	model := *newModel(Options{Config: &config.Options{}})
+	model := newModel(Options{Config: &config.Options{}})
 	model.screen = ScreenDetails
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if updated.(Model).screen != ScreenLibrary {
-		t.Fatalf("screen = %v, want library", updated.(Model).screen)
+	if updated.(*Model).screen != ScreenLibrary {
+		t.Fatalf("screen = %v, want library", updated.(*Model).screen)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestOpeningSavedSeriesRefreshesAndShowsSeasonEpisodes(t *testing.T) {
 		t.Fatalf("save series: %v", err)
 	}
 	refreshed := false
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{},
 		Store:  state,
 		RefreshEntry: func(_ context.Context, entry store.Series) error {
@@ -133,7 +133,7 @@ func TestOpeningSavedSeriesRefreshesAndShowsSeasonEpisodes(t *testing.T) {
 		t.Fatalf("initial screen = %v, want library", model.screen)
 	}
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if model.screen != ScreenDetails || cmd == nil {
 		t.Fatalf("opening series: screen = %v, refresh command = %v", model.screen, cmd != nil)
 	}
@@ -152,7 +152,7 @@ func TestOpeningSavedSeriesRefreshesAndShowsSeasonEpisodes(t *testing.T) {
 		}
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if model.screen != ScreenSeasonEpisodes {
 		t.Fatalf("screen = %v, want season episodes", model.screen)
 	}
@@ -183,7 +183,7 @@ func TestOpeningSavedSeriesKeepsCachedEpisodesIfRefreshFails(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save episode: %v", err)
 	}
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{},
 		Store:  state,
 		RefreshEntry: func(context.Context, store.Series) error {
@@ -191,7 +191,7 @@ func TestOpeningSavedSeriesKeepsCachedEpisodesIfRefreshFails(t *testing.T) {
 		},
 	})
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if cmd == nil {
 		t.Fatal("opening a saved series did not start refresh")
 	}
@@ -203,7 +203,7 @@ func TestOpeningSavedSeriesKeepsCachedEpisodesIfRefreshFails(t *testing.T) {
 		}
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if view = model.View(); !strings.Contains(view, "S03E04") || !strings.Contains(view, "Gespeicherte Folge") {
 		t.Fatalf("cached episode disappeared from season view after refresh failure:\n%s", view)
 	}
@@ -228,7 +228,7 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 		t.Fatalf("save episodes: %v", err)
 	}
 	var downloads [][]string
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		Store:  state,
 		DownloadEpisodes: func(_ context.Context, _ store.Series, ids []string) error {
@@ -237,7 +237,7 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 		},
 	})
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
+	model = updated.(*Model)
 	model = runCommands(t, model, cmd)
 	view := model.View()
 	for _, want := range []string{"Staffel 1 - 2 Folgen, 2 offen", "Staffel 2 - 2 Folgen, 2 offen"} {
@@ -247,7 +247,7 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 	}
 
 	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if cmd == nil {
 		t.Fatal("season download did not start")
 	}
@@ -263,9 +263,9 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 	}
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
-	model = updated.(Model)
+	model = updated.(*Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if model.screen != ScreenSeasonEpisodes {
 		t.Fatalf("screen = %v, want season episodes", model.screen)
 	}
@@ -285,10 +285,10 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 		{Type: tea.KeySpace},
 	} {
 		updated, _ = model.Update(key)
-		model = updated.(Model)
+		model = updated.(*Model)
 	}
 	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if cmd == nil {
 		t.Fatal("selected episode download did not start")
 	}
@@ -304,9 +304,9 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 	}
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeySpace})
-	model = updated.(Model)
+	model = updated.(*Model)
 	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if cmd == nil {
 		t.Fatal("single selected episode download did not start")
 	}
@@ -317,7 +317,7 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 }
 
 func TestSeriesSeasonOverviewScrollsToLaterSeasons(t *testing.T) {
-	model := *newModel(Options{Config: &config.Options{}})
+	model := newModel(Options{Config: &config.Options{}})
 	model.details = store.Series{ID: 1, Title: "Long Show", Kind: store.KindSeries}
 	model.episodes = []store.KnownEpisode{
 		{EpisodeRef: store.EpisodeRef{ID: "s1", Season: 1, Number: 1}},
@@ -333,9 +333,9 @@ func TestSeriesSeasonOverviewScrollsToLaterSeasons(t *testing.T) {
 		t.Fatalf("initial short-screen season window is wrong:\n%s", view)
 	}
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
-	model = updated.(Model)
+	model = updated.(*Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
-	model = updated.(Model)
+	model = updated.(*Model)
 	view = model.View()
 	if !strings.Contains(view, "Staffel 3") {
 		t.Fatalf("later season is unreachable by scrolling:\n%s", view)
@@ -356,7 +356,7 @@ func TestLibraryDownloadShowsQueueAndReturnsToLibrary(t *testing.T) {
 		t.Fatalf("save episode: %v", err)
 	}
 	called := false
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		Store:  state,
 		DownloadNew: func(context.Context, store.Series) error {
@@ -368,7 +368,7 @@ func TestLibraryDownloadShowsQueueAndReturnsToLibrary(t *testing.T) {
 		t.Fatalf("initial screen = %v, want library", model.screen)
 	}
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	model = updated.(Model)
+	model = updated.(*Model)
 	if cmd == nil {
 		t.Fatal("library download did not start")
 	}
@@ -386,7 +386,7 @@ func TestLibraryDownloadShowsQueueAndReturnsToLibrary(t *testing.T) {
 
 func TestEpisodeSelectionNeedsExplicitChoiceToDownload(t *testing.T) {
 	downloads := 0
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		DownloadEpisodes: func(context.Context, store.Series, []string) error {
 			downloads++
@@ -417,7 +417,7 @@ func TestEpisodeSelectionNeedsExplicitChoiceToDownload(t *testing.T) {
 
 func TestSelectAllTwiceDownloadsNothing(t *testing.T) {
 	downloads := 0
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		DownloadEpisodes: func(context.Context, store.Series, []string) error {
 			downloads++
@@ -443,7 +443,7 @@ func TestSelectAllTwiceDownloadsNothing(t *testing.T) {
 }
 
 func TestSelectAllAfterPartialDeselection(t *testing.T) {
-	model := *newModel(Options{Config: &config.Options{FileTag: "example"}})
+	model := newModel(Options{Config: &config.Options{FileTag: "example"}})
 	model.details = store.Series{ID: 1, Title: "Test Show", Kind: store.KindTatort}
 	model.episodes = []store.KnownEpisode{
 		{EpisodeRef: store.EpisodeRef{ID: "a", Title: "Erste"}},
@@ -464,7 +464,7 @@ func TestSelectAllAfterPartialDeselection(t *testing.T) {
 
 func TestEpisodeSelectionFallsBackToOpenEpisodes(t *testing.T) {
 	now := time.Now()
-	model := *newModel(Options{Config: &config.Options{FileTag: "example"}})
+	model := newModel(Options{Config: &config.Options{FileTag: "example"}})
 	model.details = store.Series{ID: 1, Title: "Test Show", Kind: store.KindTatort}
 	model.episodes = []store.KnownEpisode{
 		{EpisodeRef: store.EpisodeRef{ID: "open", Title: "Offen"}},
@@ -490,7 +490,7 @@ func TestLibraryRemovalNeedsConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save series: %v", err)
 	}
-	model := *newModel(Options{Config: &config.Options{}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 	if model.screen != ScreenLibrary {
 		t.Fatalf("initial screen = %v, want the library", model.screen)
 	}
@@ -541,7 +541,7 @@ func TestProgramRunsSeasonEpisodeDownloadFlow(t *testing.T) {
 		t.Fatalf("save episode: %v", err)
 	}
 	var downloaded []string
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		Store:  state,
 		DownloadEpisodes: func(_ context.Context, _ store.Series, ids []string) error {
@@ -553,10 +553,10 @@ func TestProgramRunsSeasonEpisodeDownloadFlow(t *testing.T) {
 	// Open the saved series and its episode list through the same messages the
 	// program loop would deliver.
 	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = next.(Model)
+	model = next.(*Model)
 	model = runCommands(t, model, cmd)
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = next.(Model)
+	model = next.(*Model)
 	if model.screen != ScreenSeasonEpisodes {
 		t.Fatalf("screen = %v, want the season episode list:\n%s", model.screen, model.View())
 	}
@@ -567,7 +567,7 @@ func TestProgramRunsSeasonEpisodeDownloadFlow(t *testing.T) {
 		{Type: tea.KeyRunes, Runes: []rune{'d'}},
 	} {
 		next, cmd = model.Update(key)
-		model = next.(Model)
+		model = next.(*Model)
 		if cmd != nil {
 			model = runCommands(t, model, cmd)
 		}

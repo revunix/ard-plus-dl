@@ -81,7 +81,9 @@ func TestEndToEndNativeDash(t *testing.T) {
 		Manager: &download.Manager{
 			DownloadsDir: downloads,
 			FileTag:      "example",
-			Probe:        func(path string) (string, error) { return media.ProbeMediaTag(ffprobePath, path) },
+			Probe: func(ctx context.Context, path string) (string, error) {
+				return media.ProbeMediaTag(ctx, ffprobePath, path)
+			},
 		},
 	}
 	if err := application.Run(context.Background()); err != nil {
@@ -94,7 +96,7 @@ func TestEndToEndNativeDash(t *testing.T) {
 	}
 	final := files[0]
 
-	mediaTag, err := media.ProbeMediaTag(ffprobePath, final)
+	mediaTag, err := media.ProbeMediaTag(context.Background(), ffprobePath, final)
 	if err != nil {
 		t.Fatalf("ProbeMediaTag(%s): %v", final, err)
 	}

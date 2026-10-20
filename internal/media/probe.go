@@ -2,17 +2,22 @@ package media
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // ErrNoMediaInfo is returned when ffprobe produced no output at all. Callers
 // keep the staging name in that case.
 var ErrNoMediaInfo = errors.New("no media information from ffprobe")
+
+// probeTimeout bounds a single ffprobe run.
+const probeTimeout = 30 * time.Second
 
 var germanLanguage = regexp.MustCompile(`^(?i:ger|deu|de)$`)
 
@@ -36,8 +41,17 @@ type ffprobeOutput struct {
 // audio track is preferred; otherwise the first audio track is used. A stream
 // kind that is missing or unknown is labelled "Unknown", matching the Bash
 // implementation.
-func ProbeMediaTag(ffprobe, path string) (string, error) {
-	cmd := exec.Command(ffprobe, "-v", "error",
+//
+// ffprobe runs with a timeout of its own, so that a stuck process cannot hold
+// up the run.
+func ProbeMediaTag(ctx context.Context, ffprobe, path string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error",
 		"-show_entries", "stream=codec_type,codec_name,profile,height,channels:stream_tags=language",
 		"-of", "json", path)
 	out, err := cmd.Output()

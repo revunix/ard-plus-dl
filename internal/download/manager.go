@@ -3,6 +3,8 @@
 package download
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,6 +28,9 @@ type Item struct {
 	DirStem string
 	// DirUsesTag appends the media tag to a newly created directory.
 	DirUsesTag bool
+	// FileTag overrides the global Datei-Tag of the manager, so a series can
+	// carry its own tag.
+	FileTag string
 }
 
 // Manager performs the skip, cleanup and finalize steps.
@@ -33,14 +38,24 @@ type Manager struct {
 	DownloadsDir string
 	FileTag      string
 	Force        bool
-	Probe        func(path string) (string, error)
-	Logf         func(format string, args ...any)
+	// Probe reads the media information of a finished file.
+	Probe func(ctx context.Context, path string) (string, error)
+	Logf  func(format string, args ...any)
 }
 
 func (m *Manager) logf(format string, args ...any) {
 	if m.Logf != nil {
 		m.Logf(format, args...)
 	}
+}
+
+// fileTag returns the Datei-Tag of the item: the one of the series when it
+// has its own, the global one otherwise.
+func (m *Manager) fileTag(item Item) string {
+	if item.FileTag != "" {
+		return item.FileTag
+	}
+	return m.FileTag
 }
 
 // StagingPath returns the absolute staging path without extension.
@@ -158,20 +173,23 @@ func (m *Manager) hasOutput(pattern string) bool {
 
 // Finalize probes the finished download and moves it to its final name. When
 // ffprobe reports no usable streams the file keeps the staging name.
-func (m *Manager) Finalize(item Item, stagingFile string) (string, error) {
+func (m *Manager) Finalize(ctx context.Context, item Item, stagingFile string) (string, error) {
 	info, err := os.Stat(stagingFile)
 	if err != nil || !info.Mode().IsRegular() {
 		return "", fmt.Errorf("Download finished without a file: %s", m.StagingPath(item))
 	}
 	ext := filepath.Ext(stagingFile)
 
-	tag, probeErr := m.Probe(stagingFile)
+	if m.Probe == nil {
+		return "", errors.New("no media probe configured")
+	}
+	tag, probeErr := m.Probe(ctx, stagingFile)
 	if probeErr != nil {
 		m.logf("WARNUNG: Medieninformationen nicht ermittelbar, Datei behaelt den bisherigen Namen: %s", stagingFile)
 		_ = os.RemoveAll(m.WorkDir(item))
 		return stagingFile, nil
 	}
-	tag = media.ApplyFileTag(tag, m.FileTag)
+	tag = media.ApplyFileTag(tag, m.fileTag(item))
 
 	dir := ""
 	if item.DirStem != "" {

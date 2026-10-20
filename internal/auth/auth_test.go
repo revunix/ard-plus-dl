@@ -363,8 +363,8 @@ func TestSessionEnsureUsesStoredToken(t *testing.T) {
 	if err := session.Ensure(context.Background()); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
-	if session.Token != jwt {
-		t.Fatalf("Token = %q, want %q", session.Token, jwt)
+	if session.CurrentToken() != jwt {
+		t.Fatalf("Token = %q, want %q", session.CurrentToken(), jwt)
 	}
 	if playback.token != jwt {
 		t.Fatalf("playback token = %q, want %q", playback.token, jwt)
@@ -433,8 +433,8 @@ func TestSessionRenew(t *testing.T) {
 	if logins() != 1 {
 		t.Fatalf("logins = %d, want 1", logins())
 	}
-	if session.Token != jwt {
-		t.Fatalf("Token = %q, want %q", session.Token, jwt)
+	if session.CurrentToken() != jwt {
+		t.Fatalf("Token = %q, want %q", session.CurrentToken(), jwt)
 	}
 	stored, _ := store.Load()
 	if stored != jwt {

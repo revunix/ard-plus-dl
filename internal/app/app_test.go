@@ -457,7 +457,7 @@ func newHarnessWith(t *testing.T, b *backend, opts *config.Options) *harness {
 		DownloadsDir: downloads,
 		FileTag:      opts.FileTag,
 		Force:        opts.ForceRedownload,
-		Probe:        func(string) (string, error) { return harnessMediaTag, nil },
+		Probe:        func(context.Context, string) (string, error) { return harnessMediaTag, nil },
 		// The CLI points this at stdout; the tests record it like the app
 		// log lines so the skip and rename messages stay assertable.
 		Logf: func(format string, args ...any) {

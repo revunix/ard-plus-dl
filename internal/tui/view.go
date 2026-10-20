@@ -12,7 +12,7 @@ import (
 const maxContentWidth = 120
 
 // View renders the current screen.
-func (m Model) View() string {
+func (m *Model) View() string {
 	if m.helpVisible {
 		return m.helpView()
 	}
@@ -41,7 +41,7 @@ func (m Model) View() string {
 }
 
 // contentWidth keeps the layout readable on very wide terminals.
-func (m Model) contentWidth() int {
+func (m *Model) contentWidth() int {
 	if m.width > 0 && m.width < maxContentWidth {
 		return m.width
 	}
@@ -49,7 +49,7 @@ func (m Model) contentWidth() int {
 }
 
 // frameLines fits every line to the content width and clips the height.
-func (m Model) frameLines(lines []string) string {
+func (m *Model) frameLines(lines []string) string {
 	width := m.contentWidth()
 	fitted := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -63,7 +63,7 @@ func (m Model) frameLines(lines []string) string {
 
 // renderFrame joins header, body and footer and keeps the footer visible when
 // the terminal is too short for everything.
-func (m Model) renderFrame(header, body, footer []string) string {
+func (m *Model) renderFrame(header, body, footer []string) string {
 	if m.height > 0 {
 		overflow := len(header) + len(body) + len(footer) - m.height
 		if overflow > 0 {
@@ -136,7 +136,7 @@ func tailWithEllipsis(lines []string, budget int) []string {
 	return tail
 }
 
-func (m Model) helpView() string {
+func (m *Model) helpView() string {
 	width := m.contentWidth()
 	header := renderHeader(width, "Hilfe", "Tasten und Befehle")
 	hintLine := func(innerWidth int, pairs ...string) string {
@@ -205,7 +205,7 @@ func (m Model) helpView() string {
 	return m.renderFrame(header, panel, footer)
 }
 
-func (m Model) startView() string {
+func (m *Model) startView() string {
 	width := m.contentWidth()
 	title := "Start"
 	subtitle := "Zugang und Download-Ziel"
@@ -285,7 +285,7 @@ func (m Model) startView() string {
 	return m.renderFrame(header, body, footer)
 }
 
-func (m Model) seriesView() string {
+func (m *Model) seriesView() string {
 	width := m.contentWidth()
 	heading := m.showName
 	if heading == "" {
@@ -319,6 +319,12 @@ func (m Model) seriesView() string {
 	inner := panelInner(width)
 	budget := listBudget(m.height, header, footer, 0, width, panelTitle)
 	budget = min(budget, m.seriesVisible())
+	// The hint about an empty selection needs a line of its own.
+	hintLines := 0
+	if m.selectionErr != "" {
+		hintLines = len(wrapText(m.selectionErr, inner))
+		budget = max(1, budget-hintLines)
+	}
 	var rows []string
 	if len(m.seasons) == 0 {
 		rows = clampLines(renderEmpty(inner, "Keine Staffeln verfügbar.", "Bitte später erneut prüfen."), budget)
@@ -350,11 +356,17 @@ func (m Model) seriesView() string {
 			rows = append(rows, theme.Muted.Render(fmt.Sprintf("  … %d weitere", len(m.seasons)-end)))
 		}
 	}
+	if m.selectionErr != "" {
+		rows = append(rows, "")
+		for _, line := range wrapText(m.selectionErr, inner) {
+			rows = append(rows, fitLine(theme.Danger.Render(line), inner))
+		}
+	}
 	panel := renderPanel(width, panelTitle, rows, true)
 	return m.renderFrame(header, panel, footer)
 }
 
-func (m Model) tatortView() string {
+func (m *Model) tatortView() string {
 	width := m.contentWidth()
 	title := truncate("Tatort "+m.tatortCity, max(8, width-2))
 	header := renderHeader(width, title, "Episoden überspringen")
@@ -399,7 +411,7 @@ func (m Model) tatortView() string {
 	return m.renderFrame(header, renderPanel(width, "Überspringen", content, true), footer)
 }
 
-func (m Model) queueView() string {
+func (m *Model) queueView() string {
 	width := m.contentWidth()
 	jobIndex := m.currentJobIndex()
 	position := 0
@@ -447,7 +459,7 @@ func (m Model) queueView() string {
 	return m.renderFrame(header, contentLines, footer)
 }
 
-func (m Model) downloadPanel(width, maxLines int) []string {
+func (m *Model) downloadPanel(width, maxLines int) []string {
 	inner := panelInner(width)
 	content := []string{}
 	jobIndex := m.currentJobIndex()
@@ -509,7 +521,7 @@ func (m Model) downloadPanel(width, maxLines int) []string {
 
 // renderPanelBudget shrinks the content until the bordered panel fits the
 // available height.
-func (m Model) renderPanelBudget(width int, title string, content []string, maxLines int) []string {
+func (m *Model) renderPanelBudget(width int, title string, content []string, maxLines int) []string {
 	if maxLines <= 0 {
 		maxLines = 1 << 30
 	}
@@ -526,7 +538,7 @@ func (m Model) renderPanelBudget(width int, title string, content []string, maxL
 	return renderPanel(width, title, content, true)
 }
 
-func (m Model) currentJobIndex() int {
+func (m *Model) currentJobIndex() int {
 	for index := len(m.jobs) - 1; index >= 0; index-- {
 		if m.jobs[index].status == "lädt" {
 			return index
@@ -540,7 +552,7 @@ func (m Model) currentJobIndex() int {
 	return len(m.jobs) - 1
 }
 
-func (m Model) activityPanel(width, maxLines int) []string {
+func (m *Model) activityPanel(width, maxLines int) []string {
 	if maxLines <= 0 {
 		return nil
 	}
@@ -567,7 +579,7 @@ func (m Model) activityPanel(width, maxLines int) []string {
 	return m.renderPanelBudget(width, "Aktivität", content, maxLines)
 }
 
-func (m Model) hasCompletedJob() bool {
+func (m *Model) hasCompletedJob() bool {
 	for _, item := range m.jobs {
 		if item.status == "fertig" || item.status == "fehlgeschlagen" {
 			return true
@@ -630,7 +642,7 @@ func fitLogLine(value string, width int) string {
 	return ansi.TruncateLeft(value, trim, "…")
 }
 
-func (m Model) libraryView() string {
+func (m *Model) libraryView() string {
 	width := m.contentWidth()
 	subtitle := librarySubtitle(m.library)
 	header := renderHeader(width, "Bibliothek", subtitle)
@@ -754,7 +766,7 @@ func padRight(value string, width int) string {
 	return value
 }
 
-func (m Model) libraryLine(entry store.Series, index, width int) string {
+func (m *Model) libraryLine(entry store.Series, index, width int) string {
 	cols := libraryColumns(width)
 	cursor := "  "
 	if index == m.libCursor {
@@ -803,7 +815,7 @@ func kindLabel(kind string) string {
 	return "?"
 }
 
-func (m Model) detailsView() string {
+func (m *Model) detailsView() string {
 	width := m.contentWidth()
 	footer := m.detailsFooter(width)
 	badge := renderBadge(kindLabel(m.details.Kind))
@@ -867,7 +879,7 @@ func (m Model) detailsView() string {
 	return m.renderFrame(header, body, footer)
 }
 
-func (m Model) seasonLines(budget, width int) []string {
+func (m *Model) seasonLines(budget, width int) []string {
 	if budget <= 0 {
 		return nil
 	}
@@ -895,7 +907,7 @@ func (m Model) seasonLines(budget, width int) []string {
 	return lines
 }
 
-func (m Model) detailsFooter(width int) []string {
+func (m *Model) detailsFooter(width int) []string {
 	series := m.details.Kind == store.KindSeries && len(m.detailSeasons) > 0
 	var hints []keyHint
 	if series {
@@ -918,7 +930,7 @@ func (m Model) detailsFooter(width int) []string {
 	return renderFooter(width, hints)
 }
 
-func (m Model) episodeFooter(width int, inSeason bool) []string {
+func (m *Model) episodeFooter(width int, inSeason bool) []string {
 	back := "Bibliothek"
 	if inSeason {
 		back = "Staffeln"
@@ -932,7 +944,7 @@ func (m Model) episodeFooter(width int, inSeason bool) []string {
 	})
 }
 
-func (m Model) seasonEpisodesView() string {
+func (m *Model) seasonEpisodesView() string {
 	width := m.contentWidth()
 	footer := m.episodeFooter(width, true)
 	badge := renderBadge(kindLabel(m.details.Kind))
@@ -967,7 +979,7 @@ func (m Model) seasonEpisodesView() string {
 	return m.renderFrame(header, body, footer)
 }
 
-func (m Model) episodeLines(episodes []store.KnownEpisode, budget, width int) []string {
+func (m *Model) episodeLines(episodes []store.KnownEpisode, budget, width int) []string {
 	if budget <= 0 {
 		return nil
 	}
@@ -1026,7 +1038,7 @@ func episodeLabel(episode store.KnownEpisode) string {
 	return "-"
 }
 
-func (m Model) summaryView() string {
+func (m *Model) summaryView() string {
 	width := m.contentWidth()
 	title := "Fertig"
 	if m.doneErr != nil || m.cancelled {
@@ -1100,7 +1112,7 @@ func styleLines(lines []string, style interface{ Render(...string) string }) []s
 	return rendered
 }
 
-func (m Model) appendDetailMessage(lines []string, headerLen, footerLen, width int) []string {
+func (m *Model) appendDetailMessage(lines []string, headerLen, footerLen, width int) []string {
 	if m.detailMessage == "" {
 		return lines
 	}
@@ -1125,7 +1137,7 @@ func (m Model) appendDetailMessage(lines []string, headerLen, footerLen, width i
 	return lines
 }
 
-func (m Model) tailLog(count int) []string {
+func (m *Model) tailLog(count int) []string {
 	if len(m.log) <= count {
 		return m.log
 	}

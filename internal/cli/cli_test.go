@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -513,5 +514,40 @@ func TestBuildAppWiresTheDebugDirectory(t *testing.T) {
 		t.Error("the pipeline must have an HTTP client with a timeout")
 	} else if pipeline.HTTP.Timeout == 0 {
 		t.Error("the manifest request must have a timeout")
+	}
+}
+
+// The prompts must react to a cancelled context: Ctrl+C is caught by the
+// signal handler, so a prompt that ignores the context would hang.
+func TestReadLineGivesUpOnACancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = writer.Close() })
+	if got := readLine(ctx, reader); got != "" {
+		t.Fatalf("readLine = %q, want an empty string", got)
+	}
+}
+
+func TestHeadlessSelectSeasonsReportsTheCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader(""), interactive: true}
+	_, err := ui.SelectSeasons(ctx, "Test Show", []app.Season{{Number: 1, Title: "Staffel 1"}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("SelectSeasons error = %v, want context.Canceled", err)
+	}
+}
+
+func TestHeadlessSelectCategoriesReportsTheCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader(""), interactive: true}
+	_, err := ui.SelectCategories(ctx, "Tatort-Archiv", []app.Category{{Slug: "tatort-koeln", Title: "Köln"}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("SelectCategories error = %v, want context.Canceled", err)
 	}
 }

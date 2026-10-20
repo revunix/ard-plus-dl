@@ -183,7 +183,9 @@ func (a *App) DownloadNew(ctx context.Context, entry store.Series) error {
 		// A movie has no episode list; loading it again is the whole job.
 		a.nonInteractive = true
 		defer func() { a.nonInteractive = false }()
-		return a.runURL(ctx, entry.URL, 1)
+		a.applySeriesDefaults(entry)
+		defer a.clearSeriesDefaults()
+		return a.runURL(ctx, entry.URL, a.entrySkip(entry))
 	}
 	if len(pending) == 0 {
 		return nil
@@ -249,16 +251,48 @@ func (a *App) downloadSelection(ctx context.Context, entry store.Series, wanted 
 	seriesID := entry.ID
 	a.onlyEpisodes = wanted
 	a.nonInteractive = true
+	a.applySeriesDefaults(entry)
 	a.markDownloaded = func(episodeID string) { _ = a.Store.MarkDownloaded(seriesID, episodeID) }
 	defer func() {
 		a.onlyEpisodes = nil
 		a.onlySeasons = nil
 		a.markDownloaded = nil
 		a.nonInteractive = false
+		a.clearSeriesDefaults()
 	}()
 
 	a.logf("%d Folge(n) für %s.", len(wanted), entry.Title)
-	return a.runURL(ctx, entry.URL, 1)
+	return a.runURL(ctx, entry.URL, a.entrySkip(entry))
+}
+
+// applySeriesDefaults takes the Datei-Tag of the series over the global one.
+// An invalid tag is ignored, so a broken library entry cannot stop the run.
+func (a *App) applySeriesDefaults(entry store.Series) {
+	a.fileTag = ""
+	a.skip = 0
+	if entry.Tag == "" {
+		return
+	}
+	if err := config.ValidateFileTag(entry.Tag); err != nil {
+		a.logf("Der Datei-Tag der Serie %q wird ignoriert: %v", entry.Title, err)
+		return
+	}
+	a.fileTag = entry.Tag
+}
+
+// clearSeriesDefaults drops the per-series values again.
+func (a *App) clearSeriesDefaults() {
+	a.fileTag = ""
+	a.skip = 0
+}
+
+// entrySkip returns the number of leading episodes of the first season that
+// are skipped for the entry. A value of 0 or 1 skips nothing.
+func (a *App) entrySkip(entry store.Series) int {
+	if entry.Skip > 1 {
+		return entry.Skip
+	}
+	return 1
 }
 
 // downloadHub replaces the archive entry with its categories and downloads the

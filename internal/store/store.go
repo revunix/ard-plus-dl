@@ -261,6 +261,13 @@ func (s *Store) SetSeriesTag(id int64, tag string) error {
 	return err
 }
 
+// SetSeriesSkip stores the number of leading episodes of the first season
+// that are skipped for the entry.
+func (s *Store) SetSeriesSkip(id int64, skip int) error {
+	_, err := s.db.Exec(`UPDATE series SET skip = ? WHERE id = ?`, skip, id)
+	return err
+}
+
 // SyncEpisodes stores the episodes the API currently reports and returns the
 // ones that were not known before.
 func (s *Store) SyncEpisodes(seriesID int64, episodes []EpisodeRef) ([]EpisodeRef, error) {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,6 +99,12 @@ type App struct {
 	// onlySeasons, when set for a selection, holds the requested episodes per
 	// season number so the flow skips seasons without requested episodes.
 	onlySeasons map[int]int
+	// fileTag is the Datei-Tag of the series that is currently downloaded. It
+	// overrides the global tag when the series carries its own.
+	fileTag string
+	// skip is the number of leading episodes of the first season that are
+	// skipped for the series that is currently downloaded.
+	skip int
 	// nonInteractive suppresses prompts for runs driven by a fixed selection
 	// (--download-new).
 	nonInteractive bool
@@ -119,6 +126,11 @@ func (a *App) wanted(episodeID string) bool {
 		return true
 	}
 	return a.onlyEpisodes[episodeID]
+}
+
+// itemTag returns the Datei-Tag that the items of the current run carry.
+func (a *App) itemTag() string {
+	return a.fileTag
 }
 
 // markDone records a downloaded episode in the library.
@@ -311,6 +323,7 @@ func (a *App) movieFlow(ctx context.Context, movie *ardplus.Movie) error {
 		FinalGlob:   stem + "/" + stem + ".*",
 		BaseStem:    stem,
 		DirStem:     stem,
+		FileTag:     a.itemTag(),
 	}
 	if skip, err := a.Manager.Prepare(item); skip || err != nil {
 		return err
@@ -344,6 +357,9 @@ func (a *App) seriesFlow(ctx context.Context, series *ardplus.Series, skip int) 
 
 	applySkip := true
 	for _, seasonNumber := range selected {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		seasonID := ""
 		for _, s := range seasons {
 			if s.Number == seasonNumber {
@@ -392,6 +408,9 @@ func (a *App) seriesFlow(ctx context.Context, series *ardplus.Series, skip int) 
 			continue
 		}
 		for _, episode := range episodes[start:] {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if !a.wanted(episode.ID) {
 				continue
 			}
@@ -405,14 +424,16 @@ func (a *App) seriesFlow(ctx context.Context, series *ardplus.Series, skip int) 
 				BaseStem:    episodeStem,
 				DirStem:     seasonStem,
 				DirUsesTag:  true,
+				FileTag:     a.itemTag(),
 			}
-			if skipped, err := a.Manager.Prepare(item); skipped || err != nil {
-				if skipped {
-					if a.UI != nil {
-						a.UI.Event(Event{Kind: EventSkipped, Label: staging})
-					}
-					a.markDone(episode.ID)
+			if skipped, err := a.Manager.Prepare(item); err != nil {
+				a.recordEpisodeFailure("could not prepare %s: %s", staging, err.Error())
+				continue
+			} else if skipped {
+				if a.UI != nil {
+					a.UI.Event(Event{Kind: EventSkipped, Label: staging})
 				}
+				a.markDone(episode.ID)
 				continue
 			}
 			a.logf("Lade %s...", staging)
@@ -453,6 +474,9 @@ func (a *App) tatortFlow(ctx context.Context, slug string, skip int) error {
 	}
 
 	for _, listed := range urls[skip:] {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		episodeURL := listed.URL
 		episodeID := ardplus.DetailID(episodeURL)
 		if episodeID == "" {
@@ -483,14 +507,16 @@ func (a *App) tatortFlow(ctx context.Context, slug string, skip int) error {
 			StagingPath: staging,
 			FinalGlob:   finalGlob,
 			BaseStem:    base,
+			FileTag:     a.itemTag(),
 		}
-		if skipped, err := a.Manager.Prepare(item); skipped || err != nil {
-			if skipped {
-				if a.UI != nil {
-					a.UI.Event(Event{Kind: EventSkipped, Label: staging})
-				}
-				a.markDone(episodeID)
+		if skipped, err := a.Manager.Prepare(item); err != nil {
+			a.recordEpisodeFailure("could not prepare %s: %s", staging, err.Error())
+			continue
+		} else if skipped {
+			if a.UI != nil {
+				a.UI.Event(Event{Kind: EventSkipped, Label: staging})
 			}
+			a.markDone(episodeID)
 			continue
 		}
 		a.logf("Lade %s...", staging)
@@ -499,7 +525,11 @@ func (a *App) tatortFlow(ctx context.Context, slug string, skip int) error {
 			continue
 		}
 		a.markDone(episodeID)
-		time.Sleep(time.Second)
+		// The pause keeps the requests to the API at a human pace. It gives
+		// up when the run is cancelled.
+		if err := sleep(ctx, time.Second); err != nil {
+			return err
+		}
 	}
 	if a.episodeFailures > 0 {
 		return a.fail("%d episode download(s) failed (first: %s)", a.episodeFailures, a.firstFailure)
@@ -514,6 +544,19 @@ func pick(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// sleep waits for the given duration and gives up when the context is
+// cancelled.
+func sleep(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func capitalize(value string) string {
@@ -548,12 +591,17 @@ func (a *App) downloadItem(ctx context.Context, item download.Item, contentID, c
 	if err != nil {
 		return a.fail("no playback authorization for %s: %s", staging, err.Error())
 	}
-	defer a.Session.Release(ctx, contentID, contentType)
+	// The playback session must also be released when the run is cancelled,
+	// so the context is detached from the cancellation.
+	defer a.Session.Release(context.WithoutCancel(ctx), contentID, contentType)
 
 	if dashURL == "" {
 		return a.fail("no video URL in API response for %s", staging)
 	}
-	manifestURL := dashURL + "?" + param
+	manifestURL, err := buildManifestURL(dashURL, param)
+	if err != nil {
+		return a.fail("invalid video URL for %s: %s", staging, err.Error())
+	}
 
 	workDir := a.Manager.WorkDir(item)
 	tracks, err := a.Fetcher.Fetch(ctx, manifestURL, workDir, func(done, total int) {
@@ -568,7 +616,7 @@ func (a *App) downloadItem(ctx context.Context, item download.Item, contentID, c
 	if err := a.Fetcher.Mux(ctx, workDir, tracks, stagingPath); err != nil {
 		return a.fail("muxing failed for %s: %s", staging, err.Error())
 	}
-	final, err := a.Manager.Finalize(item, stagingPath+".mp4")
+	final, err := a.Manager.Finalize(ctx, item, stagingPath+".mp4")
 	if err != nil {
 		return err
 	}
@@ -576,6 +624,24 @@ func (a *App) downloadItem(ctx context.Context, item download.Item, contentID, c
 		a.UI.Event(Event{Kind: EventDone, Label: label, Path: final})
 	}
 	return nil
+}
+
+// buildManifestURL adds the playback parameters to the manifest URL. The
+// parameters are appended verbatim: they carry signatures whose characters
+// must reach the CDN exactly as they were signed.
+func buildManifestURL(dashURL, param string) (string, error) {
+	if param == "" {
+		return dashURL, nil
+	}
+	parsed, err := url.Parse(dashURL)
+	if err != nil {
+		return "", err
+	}
+	separator := "?"
+	if parsed.RawQuery != "" {
+		separator = "&"
+	}
+	return dashURL + separator + param, nil
 }
 
 // hubFlow processes the Tatort hub: the user picks the categories to work on.

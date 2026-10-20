@@ -686,3 +686,55 @@ func TestRememberStoresURLAndMetadata(t *testing.T) {
 		t.Errorf("library entries = %v (err %v), want the single remembered URL", entries, err)
 	}
 }
+
+// A series can carry its own Datei-Tag, which overrides the global one.
+func TestDownloadNewUsesThePerSeriesTag(t *testing.T) {
+	h, state := newLibraryHarness(t)
+	const url = "https://www.ardplus.de/details/s1-show"
+	entry := seedLibrary(t, state, url,
+		store.EpisodeRef{ID: "e1", Title: "Folge Eins", Season: 1, Number: 1},
+	)
+	if err := state.SetSeriesTag(entry.ID, "serie"); err != nil {
+		t.Fatalf("SetSeriesTag: %v", err)
+	}
+	entry = libraryEntry(t, state, url)
+	h.backend.setGraphQL(downloadFixture().handler())
+
+	if err := h.app.DownloadNew(context.Background(), entry); err != nil {
+		t.Fatalf("DownloadNew: %v", err)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(h.downloads, "Test.Show.S01.*-serie", "*-serie.mp4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("files with the series tag = %v, want exactly one", matches)
+	}
+}
+
+// An invalid tag in the library must not stop the run: the global tag is
+// used instead.
+func TestDownloadNewIgnoresAnInvalidPerSeriesTag(t *testing.T) {
+	h, state := newLibraryHarness(t)
+	const url = "https://www.ardplus.de/details/s1-show"
+	entry := seedLibrary(t, state, url,
+		store.EpisodeRef{ID: "e1", Title: "Folge Eins", Season: 1, Number: 1},
+	)
+	if err := state.SetSeriesTag(entry.ID, "ungültig/../x"); err != nil {
+		t.Fatalf("SetSeriesTag: %v", err)
+	}
+	entry = libraryEntry(t, state, url)
+	h.backend.setGraphQL(downloadFixture().handler())
+
+	if err := h.app.DownloadNew(context.Background(), entry); err != nil {
+		t.Fatalf("DownloadNew: %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(h.downloads, "Test.Show.S01.*-example", "*-example.mp4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("files with the global tag = %v, want exactly one", matches)
+	}
+}

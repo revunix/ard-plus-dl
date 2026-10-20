@@ -44,7 +44,7 @@ func TestStoreCmdLoadLibraryFillsModel(t *testing.T) {
 	storeCmdTestEntry(t, state, "https://www.ardplus.de/details/alpha", "Alpha", store.KindSeries)
 	storeCmdTestEntry(t, state, "https://www.ardplus.de/details/beta", "Beta", store.KindSeries)
 
-	model := *newModel(Options{Config: &config.Options{}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 	model.library = nil
 	cmd := model.loadLibraryCmd()
 	if cmd == nil {
@@ -68,7 +68,7 @@ func TestStoreCmdPendingCountStartsDownload(t *testing.T) {
 		t.Fatalf("save episode: %v", err)
 	}
 	var downloaded store.Series
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		Store:  state,
 		DownloadNew: func(_ context.Context, chosen store.Series) error {
@@ -108,7 +108,7 @@ func TestStoreCmdPendingCountReportsNoOpenEpisodes(t *testing.T) {
 	state := newStoreCmdTestStore(t)
 	entry := storeCmdTestEntry(t, state, "https://www.ardplus.de/details/show", "Test Show", store.KindSeries)
 	called := false
-	model := *newModel(Options{
+	model := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		Store:  state,
 		DownloadNew: func(context.Context, store.Series) error {
@@ -136,7 +136,7 @@ func TestStoreCmdPendingCountReportsNoOpenEpisodes(t *testing.T) {
 func TestStoreCmdSetEnabledReloadsLibrary(t *testing.T) {
 	state := newStoreCmdTestStore(t)
 	entry := storeCmdTestEntry(t, state, "https://www.ardplus.de/details/alpha", "Alpha", store.KindSeries)
-	model := *newModel(Options{Config: &config.Options{}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 	model.pendingRemoval = entry.ID
 
 	cmd := model.setEnabledCmd(entry, false)
@@ -169,7 +169,7 @@ func TestStoreCmdSetEnabledReloadsLibrary(t *testing.T) {
 func TestStoreCmdRemoveSeriesReloadsLibrary(t *testing.T) {
 	state := newStoreCmdTestStore(t)
 	entry := storeCmdTestEntry(t, state, "https://www.ardplus.de/details/alpha", "Alpha", store.KindSeries)
-	model := *newModel(Options{Config: &config.Options{}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 	model.pendingRemoval = entry.ID
 
 	cmd := model.removeSeriesCmd(entry)
@@ -205,7 +205,7 @@ func TestStoreCmdOpenDetailsLoadsEpisodesAndSeason(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save episodes: %v", err)
 	}
-	model := *newModel(Options{Config: &config.Options{}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 
 	cmd := model.openDetails(entry)
 	if model.screen != ScreenDetails {

@@ -16,17 +16,17 @@ import (
 )
 
 // update drives one message through the model and returns the concrete model.
-func update(t *testing.T, m Model, msg tea.Msg) (Model, tea.Cmd) {
+func update(t *testing.T, m *Model, msg tea.Msg) (*Model, tea.Cmd) {
 	t.Helper()
 	next, cmd := m.Update(msg)
-	model, ok := next.(Model)
+	model, ok := next.(*Model)
 	if !ok {
-		t.Fatalf("Update returned %T, want Model", next)
+		t.Fatalf("Update returned %T, want *Model", next)
 	}
 	return model, cmd
 }
 
-func typeText(t *testing.T, m Model, text string) Model {
+func typeText(t *testing.T, m *Model, text string) *Model {
 	t.Helper()
 	for _, r := range text {
 		key := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
@@ -37,7 +37,7 @@ func typeText(t *testing.T, m Model, text string) Model {
 
 // runCommands executes a command tree and feeds every resulting message into
 // the model until the update loop is idle.
-func runCommands(t *testing.T, m Model, cmd tea.Cmd) Model {
+func runCommands(t *testing.T, m *Model, cmd tea.Cmd) *Model {
 	t.Helper()
 	queue := []tea.Cmd{cmd}
 	for len(queue) > 0 {
@@ -67,7 +67,7 @@ func noopRun(context.Context) error { return nil }
 
 func TestStartScreenValidation(t *testing.T) {
 	cfg := &config.Options{}
-	m := *newModel(Options{Config: cfg, StartScreen: true, Run: noopRun})
+	m := newModel(Options{Config: cfg, StartScreen: true, Run: noopRun})
 	if m.screen != ScreenStart {
 		t.Fatalf("screen = %v, want ScreenStart", m.screen)
 	}
@@ -127,7 +127,7 @@ func TestStartScreenValidation(t *testing.T) {
 
 func TestStartScreenRequiresCredentials(t *testing.T) {
 	cfg := &config.Options{}
-	m := *newModel(Options{Config: cfg, StartScreen: true, NeedsLogin: true, Run: noopRun})
+	m := newModel(Options{Config: cfg, StartScreen: true, NeedsLogin: true, Run: noopRun})
 	m.fields[0].SetValue("https://www.ardplus.de/details/abc")
 	m.fields[3].SetValue("example")
 
@@ -146,7 +146,7 @@ func TestStartScreenRequiresCredentials(t *testing.T) {
 	}
 }
 
-func seasonsRequest(t *testing.T, m Model, seasons []app.Season) (Model, chan []int) {
+func seasonsRequest(t *testing.T, m *Model, seasons []app.Season) (*Model, chan []int) {
 	t.Helper()
 	reply := make(chan []int, 1)
 	m, _ = update(t, m, SeasonsRequest{Show: "Test Show", Seasons: seasons, Reply: reply})
@@ -154,7 +154,7 @@ func seasonsRequest(t *testing.T, m Model, seasons []app.Season) (Model, chan []
 }
 
 func TestSeasonsRequestPreselectsAndToggles(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	seasons := []app.Season{
 		{Number: 1, Title: "Staffel 1", ID: "s1"},
 		{Number: 2, Title: "Staffel 2", ID: "s2"},
@@ -231,7 +231,7 @@ func TestSeasonsRequestPreselectsAndToggles(t *testing.T) {
 }
 
 func TestSkipRequestParsing(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	reply := make(chan int, 1)
 	m, _ = update(t, m, SkipRequest{City: "Koeln", Count: 5, Reply: reply})
 	if m.screen != ScreenTatort {
@@ -303,7 +303,7 @@ func TestSkipRequestParsing(t *testing.T) {
 }
 
 func TestEventMsgUpdatesJob(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 
 	m, _ = update(t, m, EventMsg{Event: app.Event{Kind: app.EventLog, Message: "erste Zeile"}})
 	if len(m.log) != 1 || m.log[0] != "erste Zeile" {
@@ -336,7 +336,7 @@ func TestEventMsgUpdatesJob(t *testing.T) {
 }
 
 func TestEventMsgProgressWithoutJobIsIgnored(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m, _ = update(t, m, EventMsg{Event: app.Event{Kind: app.EventProgress, Done: 1, Total: 2}})
 	if len(m.jobs) != 0 {
 		t.Errorf("jobs = %v, want none", m.jobs)
@@ -344,13 +344,13 @@ func TestEventMsgProgressWithoutJobIsIgnored(t *testing.T) {
 }
 
 func TestRunDoneMsgSetsExitCode(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m, _ = update(t, m, RunDoneMsg{})
 	if m.exitCode != 0 || m.screen != ScreenSummary || m.doneErr != nil {
 		t.Errorf("exitCode = %d, screen = %v, doneErr = %v; want 0/Summary/nil", m.exitCode, m.screen, m.doneErr)
 	}
 
-	failed := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	failed := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	failed, _ = update(t, failed, RunDoneMsg{Err: errors.New("kaputt")})
 	if failed.exitCode != 1 {
 		t.Errorf("exitCode = %d, want 1", failed.exitCode)
@@ -367,7 +367,7 @@ func TestCtrlCCancelsTheRunningDownload(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	m := *newModel(Options{Config: &config.Options{}, Run: run})
+	m := newModel(Options{Config: &config.Options{}, Run: run})
 	cmd := m.startRun()
 	if cmd == nil {
 		t.Fatal("startRun must return a command")
@@ -403,7 +403,7 @@ func TestCtrlCCancelsFromQueue(t *testing.T) {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	m := *newModel(Options{Config: &config.Options{}, Run: run})
+	m := newModel(Options{Config: &config.Options{}, Run: run})
 	m.screen = ScreenQueue
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
 	select {
@@ -417,7 +417,7 @@ func TestCtrlCCancelsFromQueue(t *testing.T) {
 }
 
 func TestQuitFromSummary(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.screen = ScreenSummary
 	_, cmd := update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	if cmd == nil {
@@ -426,7 +426,7 @@ func TestQuitFromSummary(t *testing.T) {
 }
 
 func TestRunDoneClearsRunningFlag(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.running = true
 	m.screen = ScreenLoading
 	m, _ = update(t, m, RunDoneMsg{})
@@ -441,7 +441,7 @@ func TestRunDoneClearsRunningFlag(t *testing.T) {
 func TestLibrarySettingsDoesNotStartRun(t *testing.T) {
 	called := false
 	cfg := &config.Options{URL: "https://www.ardplus.de/details/alt", FileTag: "example"}
-	m := *newModel(Options{
+	m := newModel(Options{
 		Config: cfg,
 		Run: func(context.Context) error {
 			called = true
@@ -472,7 +472,7 @@ func TestLibrarySettingsDoesNotStartRun(t *testing.T) {
 
 func TestLibraryAddRequiresURL(t *testing.T) {
 	called := false
-	m := *newModel(Options{
+	m := newModel(Options{
 		Config: &config.Options{FileTag: "example"},
 		Run: func(context.Context) error {
 			called = true
@@ -517,7 +517,7 @@ func TestLibraryAddRequiresURL(t *testing.T) {
 func TestLibraryDownloadMissingTagContinuesDownload(t *testing.T) {
 	called := false
 	entry := store.Series{ID: 7, URL: "https://www.ardplus.de/details/x", Title: "Test Show", Kind: store.KindSeries, NewCount: 1}
-	m := *newModel(Options{
+	m := newModel(Options{
 		Config: &config.Options{},
 		DownloadNew: func(context.Context, store.Series) error {
 			called = true
@@ -623,7 +623,7 @@ func TestPrefilledURLDoesNotAutoStart(t *testing.T) {
 }
 
 func TestQuitClosesPendingRequests(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.screen = ScreenSeries
 	m.seasonsDone = make(chan struct{})
 	m.categoriesDone = make(chan struct{})
@@ -663,13 +663,13 @@ func TestQuitClosesPendingRequests(t *testing.T) {
 }
 
 func TestCheckDoneReportsFailures(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m, _ = update(t, m, checkDoneMsg{err: errors.New("offline")})
 	if m.exitCode != 1 {
 		t.Errorf("exitCode = %d, want 1 for a failed check", m.exitCode)
 	}
 
-	m = *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m = newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m, _ = update(t, m, checkDoneMsg{results: []app.CheckResult{
 		{New: []store.EpisodeRef{{ID: "a"}}},
 		{Err: errors.New("kaputt")},
@@ -683,13 +683,13 @@ func TestCheckDoneReportsFailures(t *testing.T) {
 }
 
 func TestDownloadFailuresSetExitCode(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m, _ = update(t, m, downloadNewDoneMsg{entry: store.Series{ID: 1}, err: errors.New("kaputt")})
 	if m.exitCode != 1 {
 		t.Errorf("exitCode = %d, want 1 after a failed download", m.exitCode)
 	}
 
-	refresh := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	refresh := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	refresh, _ = update(t, refresh, detailsRefreshDoneMsg{entryID: 1, err: errors.New("offline")})
 	if refresh.exitCode != 1 {
 		t.Errorf("exitCode = %d, want 1 after a failed refresh", refresh.exitCode)
@@ -723,7 +723,7 @@ func assertVisible(t *testing.T, name string, cursor, offset, visible int) {
 }
 
 func TestWindowSizeClampsListOffsets(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.library = seriesFixtures(100)
 	m.libCursor = 99
 	m.seasons = seasonFixtures(100)
@@ -747,7 +747,7 @@ func TestWindowSizeClampsListOffsets(t *testing.T) {
 }
 
 func TestLibraryPagingKeys(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.library = seriesFixtures(100)
 	m.screen = ScreenLibrary
 	m.height = 30
@@ -782,7 +782,7 @@ func TestLibraryPagingKeys(t *testing.T) {
 }
 
 func TestSeriesPagingKeys(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.seasons = seasonFixtures(50)
 	m.screen = ScreenSeries
 	m.height = 30
@@ -817,7 +817,7 @@ func TestSeriesPagingKeys(t *testing.T) {
 }
 
 func TestDetailVisibleSmallHeight(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.height = 12
 	if got := m.detailVisible(); got != 1 {
 		t.Errorf("detailVisible() at height 12 = %d, want 1", got)
@@ -833,7 +833,7 @@ func TestDetailVisibleSmallHeight(t *testing.T) {
 }
 
 func TestHelpToggle(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.library = seriesFixtures(3)
 	m.screen = ScreenLibrary
 
@@ -873,7 +873,7 @@ func TestResizeFields(t *testing.T) {
 		{0, [4]int{60, 60, 60, 40}},
 	}
 	for _, tc := range cases {
-		m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+		m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 		m, _ = update(t, m, tea.WindowSizeMsg{Width: tc.width, Height: 24})
 		for i, want := range tc.want {
 			if got := m.fields[i].Width; got != want {
@@ -884,7 +884,7 @@ func TestResizeFields(t *testing.T) {
 }
 
 func TestBusyBlocksConflictingKeys(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.library = seriesFixtures(1)
 	m.screen = ScreenLibrary
 	m.busy = true
@@ -913,7 +913,7 @@ func TestBusyBlocksConflictingKeys(t *testing.T) {
 }
 
 func TestRunDoneResetsJobsAndLog(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.jobs = []job{{label: "alt"}}
 	m.log = []string{"alte Zeile"}
 
@@ -938,13 +938,13 @@ func TestRunDoneResetsJobsAndLog(t *testing.T) {
 }
 
 func TestCheckDoneNotes(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m, _ = update(t, m, checkDoneMsg{results: []app.CheckResult{{Note: "Archiv leer"}}})
 	if !strings.Contains(m.libMessage, "1 Hinweis: Archiv leer") {
 		t.Errorf("libMessage = %q, want the singular note", m.libMessage)
 	}
 
-	m = *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m = newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m, _ = update(t, m, checkDoneMsg{results: []app.CheckResult{
 		{Note: "erster Hinweis"},
 		{Note: "zweiter Hinweis"},
@@ -956,7 +956,7 @@ func TestCheckDoneNotes(t *testing.T) {
 
 func TestFormEnterBlockedWhileBusy(t *testing.T) {
 	called := false
-	m := *newModel(Options{
+	m := newModel(Options{
 		Config:      &config.Options{FileTag: "example"},
 		StartScreen: true,
 		Run: func(context.Context) error {
@@ -982,7 +982,7 @@ func TestFormEnterBlockedWhileBusy(t *testing.T) {
 func TestCloseCancelsContext(t *testing.T) {
 	root, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m := *newModel(Options{Config: &config.Options{}, Context: root})
+	m := newModel(Options{Config: &config.Options{}, Context: root})
 	m.seasonsDone = make(chan struct{})
 	m.categoriesDone = make(chan struct{})
 	m.skipDone = make(chan struct{})
@@ -1005,7 +1005,7 @@ func TestCloseCancelsContext(t *testing.T) {
 }
 
 func TestSeasonOffsetClampedOnResize(t *testing.T) {
-	m := *newModel(Options{Config: &config.Options{}, Run: noopRun})
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.details = store.Series{ID: 1, Kind: store.KindSeries}
 	m.episodes = make([]store.KnownEpisode, 30)
 	for i := range m.episodes {
@@ -1030,4 +1030,54 @@ func TestSeasonOffsetClampedOnResize(t *testing.T) {
 		t.Fatalf("detailOffset = %d, want 29 at height 12", m.detailOffset)
 	}
 	assertVisible(t, "seasons", m.detailSeasonCursor, m.detailOffset, m.detailVisible())
+}
+
+// Init starts the run and marks the model as running. The flag must survive:
+// the model is a pointer, so the change is not thrown away with a copy.
+func TestInitStartsTheRunAndMarksTheModelRunning(t *testing.T) {
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun, AutoStart: true})
+	if m.screen != ScreenLoading {
+		t.Fatalf("screen = %v, want ScreenLoading", m.screen)
+	}
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("Init must start the run")
+	}
+	if !m.running {
+		t.Error("Init must mark the run as running")
+	}
+}
+
+// A second run must not start while the first one is still going.
+func TestStartRunIsBlockedWhileTheRunIsGoing(t *testing.T) {
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun, AutoStart: true})
+	m.Init()
+	if cmd := m.startRun(); cmd != nil {
+		t.Error("startRun must not start a second run")
+	}
+}
+
+// Pressing enter without a selection must tell the user what is missing and
+// keep the screen open.
+func TestEnterWithoutSelectionShowsAHint(t *testing.T) {
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
+	seasons := []app.Season{{Number: 1, Title: "Staffel 1", ID: "s1"}}
+	m, reply := seasonsRequest(t, m, seasons)
+	m.selection = map[int]bool{}
+
+	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.selectionErr == "" {
+		t.Error("the model must report that nothing is selected")
+	}
+	if m.screen != ScreenSeries {
+		t.Errorf("screen = %v, want the season screen to stay open", m.screen)
+	}
+	select {
+	case selected := <-reply:
+		t.Errorf("the request must not be answered yet, got %v", selected)
+	default:
+	}
+	if !strings.Contains(m.View(), "mindestens eine Staffel") {
+		t.Errorf("the hint must be visible:\n%s", m.View())
+	}
 }

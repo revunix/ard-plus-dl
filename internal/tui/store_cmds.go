@@ -42,11 +42,11 @@ func (m *Model) loadLibraryCmd() tea.Cmd {
 func (m *Model) handleLibraryMsg(typed libraryMsg) (tea.Model, tea.Cmd) {
 	if typed.err != nil {
 		m.libMessage = "Bibliothek: " + typed.err.Error()
-		return *m, nil
+		return m, nil
 	}
 	m.library = typed.entries
 	m.clampLibOffset()
-	return *m, nil
+	return m, nil
 }
 
 // pendingCountCmd asks the store how many episodes are still open.
@@ -66,7 +66,7 @@ func (m *Model) pendingCountCmd(entry store.Series) tea.Cmd {
 func (m *Model) handlePendingCountMsg(typed pendingCountMsg) (tea.Model, tea.Cmd) {
 	if typed.err != nil {
 		m.libMessage = typed.err.Error()
-		return *m, nil
+		return m, nil
 	}
 	pending := typed.count
 	if pending == 0 && typed.entry.NewCount > 0 {
@@ -74,11 +74,11 @@ func (m *Model) handlePendingCountMsg(typed pendingCountMsg) (tea.Model, tea.Cmd
 	}
 	if pending == 0 && typed.entry.Kind != store.KindMovie {
 		m.libMessage = entryTitle(typed.entry) + ": keine offenen Folgen."
-		return *m, nil
+		return m, nil
 	}
 	if m.busy {
 		m.libMessage = "Bitte warten, eine Aktion läuft noch."
-		return *m, nil
+		return m, nil
 	}
 	if err := m.readyForDownload(); err != nil {
 		m.fields[3].SetValue(m.cfg.FileTag)
@@ -89,9 +89,9 @@ func (m *Model) handlePendingCountMsg(typed pendingCountMsg) (tea.Model, tea.Cmd
 		m.formPurpose = formStart
 		m.fields[0].SetValue(typed.entry.URL)
 		m.screen = ScreenStart
-		return *m, nil
+		return m, nil
 	}
-	return *m, m.downloadNew(typed.entry)
+	return m, m.downloadNew(typed.entry)
 }
 
 // setEnabledCmd stores the enabled flag of a library entry.
@@ -129,11 +129,11 @@ func (m *Model) removeSeriesCmd(entry store.Series) tea.Cmd {
 func (m *Model) handleStoreActionMsg(typed storeActionMsg) (tea.Model, tea.Cmd) {
 	if typed.err != nil {
 		m.libMessage = typed.err.Error()
-		return *m, nil
+		return m, nil
 	}
 	m.libMessage = typed.message
 	m.pendingRemoval = 0
-	return *m, m.loadLibraryCmd()
+	return m, m.loadLibraryCmd()
 }
 
 // openDetails switches to the details screen and loads the stored episodes.
@@ -165,7 +165,7 @@ func (m *Model) openDetails(entry store.Series) tea.Cmd {
 
 func (m *Model) handleDetailsLoadedMsg(typed detailsLoadedMsg) (tea.Model, tea.Cmd) {
 	if typed.entryID != m.details.ID {
-		return *m, nil
+		return m, nil
 	}
 	if typed.err != nil {
 		m.detailMessage = typed.err.Error()
@@ -189,5 +189,5 @@ func (m *Model) handleDetailsLoadedMsg(typed detailsLoadedMsg) (tea.Model, tea.C
 			m.detailMessage = fmt.Sprintf("Staffel %d ist nicht mehr verfügbar.", season)
 		}
 	}
-	return *m, nil
+	return m, nil
 }

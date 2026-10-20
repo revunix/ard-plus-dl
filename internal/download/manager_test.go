@@ -1,6 +1,7 @@
 package download
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -223,7 +224,7 @@ func TestFinalizeMovesTheDownload(t *testing.T) {
 	}
 	writeFile(t, staging+".mp4", "video", 0o644)
 
-	final, err := m.Finalize(item, staging+".mp4")
+	final, err := m.Finalize(context.Background(), item, staging+".mp4")
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
@@ -250,7 +251,7 @@ func TestFinalizeMovesTheDownload(t *testing.T) {
 
 func TestFinalizeFailureKeepsStagingName(t *testing.T) {
 	m, rec := newManager(t, false)
-	m.Probe = func(string) (string, error) { return "", media.ErrNoMediaInfo }
+	m.Probe = func(context.Context, string) (string, error) { return "", media.ErrNoMediaInfo }
 	item := Item{
 		StagingPath: "My Show/Season 03/My Show S03E01 - Dritte",
 		BaseStem:    "My.Show.S03E01",
@@ -266,7 +267,7 @@ func TestFinalizeFailureKeepsStagingName(t *testing.T) {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
-	final, err := m.Finalize(item, staging+".mp4")
+	final, err := m.Finalize(context.Background(), item, staging+".mp4")
 	if err != nil {
 		t.Fatalf("a failed probe must not be an error: %v", err)
 	}
@@ -302,7 +303,7 @@ func TestFinalizeReusesExistingSeasonDirectory(t *testing.T) {
 	}
 	writeFile(t, staging+".mp4", "video", 0o644)
 
-	final, err := m.Finalize(item, staging+".mp4")
+	final, err := m.Finalize(context.Background(), item, staging+".mp4")
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
@@ -336,7 +337,7 @@ func TestFinalizeKeepsTheContainerExtension(t *testing.T) {
 	}
 	writeFile(t, staging+".mkv", "video", 0o644)
 
-	final, err := m.Finalize(item, staging+".mkv")
+	final, err := m.Finalize(context.Background(), item, staging+".mkv")
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
@@ -355,7 +356,7 @@ func TestFinalizeTatortLandsInTheDownloadsRoot(t *testing.T) {
 	staging := m.StagingPath(item)
 	writeFile(t, staging+".mp4", "video", 0o644)
 
-	final, err := m.Finalize(item, staging+".mp4")
+	final, err := m.Finalize(context.Background(), item, staging+".mp4")
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
@@ -368,7 +369,7 @@ func TestFinalizeTatortLandsInTheDownloadsRoot(t *testing.T) {
 func TestFinalizeLongNamesStayBelowNameMax(t *testing.T) {
 	m, _ := newManager(t, false)
 	m.FileTag = "abcdefghijklmnop"
-	m.Probe = func(string) (string, error) { return mediaTag, nil }
+	m.Probe = func(context.Context, string) (string, error) { return mediaTag, nil }
 
 	longTitle := strings.Repeat("Titel ", 60)
 	item := Item{
@@ -383,7 +384,7 @@ func TestFinalizeLongNamesStayBelowNameMax(t *testing.T) {
 	}
 	writeFile(t, staging+".mp4", "video", 0o644)
 
-	final, err := m.Finalize(item, staging+".mp4")
+	final, err := m.Finalize(context.Background(), item, staging+".mp4")
 	if err != nil {
 		t.Fatalf("a long title must still finalize: %v", err)
 	}
@@ -403,7 +404,7 @@ func TestFinalizeMissingDownloadIsReported(t *testing.T) {
 		DirStem:     "Missing.S01",
 		DirUsesTag:  true,
 	}
-	_, err := m.Finalize(item, m.StagingPath(item)+".mp4")
+	_, err := m.Finalize(context.Background(), item, m.StagingPath(item)+".mp4")
 	if err == nil {
 		t.Fatal("expected an error for a missing download")
 	}
@@ -456,7 +457,7 @@ func newManager(t *testing.T, force bool) (*Manager, *recorder) {
 		DownloadsDir: filepath.Join(t.TempDir(), "downloads"),
 		FileTag:      "example",
 		Force:        force,
-		Probe:        func(string) (string, error) { return mediaTag, nil },
+		Probe:        func(context.Context, string) (string, error) { return mediaTag, nil },
 		Logf:         rec.logf,
 	}
 	if err := os.MkdirAll(m.DownloadsDir, 0o755); err != nil {
@@ -482,7 +483,7 @@ func TestFinalizeRemovesTheEmptyStagingDirectories(t *testing.T) {
 	manager := &Manager{
 		DownloadsDir: dir,
 		FileTag:      "tag",
-		Probe: func(string) (string, error) {
+		Probe: func(context.Context, string) (string, error) {
 			return "German.AAC.1080p.Web-DL.x264", nil
 		},
 	}
@@ -504,7 +505,7 @@ func TestFinalizeRemovesTheEmptyStagingDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	final, err := manager.Finalize(item, staging+".mp4")
+	final, err := manager.Finalize(context.Background(), item, staging+".mp4")
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}

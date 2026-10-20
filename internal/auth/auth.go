@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 // LoginURL is the ARD Plus web login endpoint that answers with an
@@ -182,7 +184,10 @@ type Session struct {
 	Password string
 	Logf     func(format string, args ...any)
 
-	Token   string
+	// mu guards the token state. The session is renewed from the download
+	// goroutine while the UI reads the current token.
+	mu      sync.RWMutex
+	token   string
 	renewed bool
 }
 
@@ -190,6 +195,36 @@ func (s *Session) logf(format string, args ...any) {
 	if s.Logf != nil {
 		s.Logf(format, args...)
 	}
+}
+
+// CurrentToken returns the token of the session.
+func (s *Session) CurrentToken() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.token
+}
+
+// wasRenewed reports whether the session was already renewed after a
+// rejection.
+func (s *Session) wasRenewed() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.renewed
+}
+
+// markRenewed records that the session was renewed after a rejection.
+func (s *Session) markRenewed() {
+	s.mu.Lock()
+	s.renewed = true
+	s.mu.Unlock()
+}
+
+// resetRenewed clears the renewal marker, so a new authorization may renew
+// the session again.
+func (s *Session) resetRenewed() {
+	s.mu.Lock()
+	s.renewed = false
+	s.mu.Unlock()
 }
 
 // Ensure makes a token available, logging in when none is stored.
@@ -202,7 +237,9 @@ func (s *Session) Ensure(ctx context.Context) error {
 }
 
 func (s *Session) setToken(token string) {
-	s.Token = token
+	s.mu.Lock()
+	s.token = token
+	s.mu.Unlock()
 	if s.Playback != nil {
 		s.Playback.SetToken(token)
 	}
@@ -242,16 +279,16 @@ func (s *Session) Authorization(ctx context.Context, contentID, contentType stri
 		return "", err
 	}
 	if param != "" {
-		s.renewed = false
+		s.resetRenewed()
 		return param, nil
 	}
-	if s.renewed {
+	if s.wasRenewed() {
 		return "", errors.New("playback session rejected")
 	}
 	if err := s.Renew(ctx); err != nil {
 		return "", err
 	}
-	s.renewed = true
+	s.markRenewed()
 	param, err = s.Playback.PlaybackAuth(ctx, contentID, contentType)
 	if err != nil {
 		return "", err
@@ -262,11 +299,15 @@ func (s *Session) Authorization(ctx context.Context, contentID, contentType stri
 	return param, nil
 }
 
-// Release ends the playback session for one content item.
+// Release ends the playback session for one content item. The context must
+// still be alive: the caller detaches it from the cancellation of the run,
+// so that the playback session is also released after an abort.
 func (s *Session) Release(ctx context.Context, contentID, contentType string) {
 	if contentID == "" || contentType == "" {
 		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	if err := s.Playback.DeletePlayback(ctx, contentID, contentType); err != nil {
 		s.logf("playback cleanup failed: %v", err)
 	}

@@ -162,6 +162,9 @@ type Model struct {
 	tatortCity      string
 	tatortCount     int
 	skipErr         string
+	// selectionErr reports an empty selection on the season and category
+	// screen.
+	selectionErr string
 
 	library        []store.Series
 	libCursor      int
@@ -326,7 +329,7 @@ func (m *Model) focusField(index int) {
 }
 
 // Init starts the run or the input screen.
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	if m.screen == ScreenStart {
 		return textinput.Blink
 	}
@@ -385,7 +388,7 @@ func (m *Model) release() {
 }
 
 // Close cancels the run and waits up to five seconds for pending commands.
-func (m Model) Close() {
+func (m *Model) Close() {
 	m.release()
 	if m.wg != nil {
 		done := make(chan struct{})
@@ -401,10 +404,10 @@ func (m Model) Close() {
 }
 
 // ExitCode is the process exit code for the finished run.
-func (m Model) ExitCode() int { return m.exitCode }
+func (m *Model) ExitCode() int { return m.exitCode }
 
 // quit releases pending UI requests and ends the program.
-func (m Model) quit(code int) (tea.Model, tea.Cmd) {
+func (m *Model) quit(code int) (tea.Model, tea.Cmd) {
 	if code != 0 {
 		m.exitCode = code
 	}
@@ -474,7 +477,7 @@ func (m *Model) beginDownload() {
 }
 
 // Update handles one message.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = typed.Width, typed.Height
@@ -667,7 +670,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if key == "ctrl+c" {
 		switch m.screen {
@@ -788,10 +791,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			for _, season := range m.seasons {
 				m.selection[season.Number] = !allSelected
 			}
+			m.selectionErr = ""
 		case "enter":
 			if m.categoryMode {
 				slugs := m.selectedCategories()
 				if len(slugs) == 0 {
+					// The screen stays open: the user can still pick a
+					// category and start the run.
+					m.selectionErr = "Bitte mindestens eine Kategorie wählen."
 					return m, nil
 				}
 				if m.categoriesReply != nil {
@@ -800,11 +807,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					reply <- slugs
 				}
 				m.categoriesDone = nil
+				m.selectionErr = ""
 				m.screen = ScreenLoading
 				return m, nil
 			}
 			selected := m.selectedSeasons()
 			if len(selected) == 0 {
+				m.selectionErr = "Bitte mindestens eine Staffel wählen."
 				return m, nil
 			}
 			if m.seasonsReply != nil {
@@ -813,6 +822,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				reply <- selected
 			}
 			m.seasonsDone = nil
+			m.selectionErr = ""
 			m.screen = ScreenLoading
 			return m, nil
 		}
@@ -864,7 +874,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleLibraryKey(key string) (tea.Model, tea.Cmd) {
+func (m *Model) handleLibraryKey(key string) (tea.Model, tea.Cmd) {
 	if m.busy {
 		switch key {
 		case "n", "c", "d", "enter", "o", " ", "x":
@@ -988,7 +998,7 @@ func (m *Model) rebuildDetailSeasons() {
 	})
 }
 
-func (m Model) hasDetailSeason(number int) bool {
+func (m *Model) hasDetailSeason(number int) bool {
 	for _, season := range m.detailSeasons {
 		if season.number == number {
 			return true
@@ -1036,7 +1046,7 @@ func (m *Model) refreshDetails(entry store.Series) tea.Cmd {
 }
 
 // libVisible is the number of library rows that fit on the screen.
-func (m Model) libVisible() int {
+func (m *Model) libVisible() int {
 	if m.height <= 0 {
 		return 20
 	}
@@ -1044,7 +1054,7 @@ func (m Model) libVisible() int {
 }
 
 // seriesVisible is the number of season rows that fit on the selection screen.
-func (m Model) seriesVisible() int {
+func (m *Model) seriesVisible() int {
 	if m.height <= 0 {
 		return 20
 	}
@@ -1052,7 +1062,7 @@ func (m Model) seriesVisible() int {
 }
 
 // detailVisible is the number of rows that fit in the details lists.
-func (m Model) detailVisible() int {
+func (m *Model) detailVisible() int {
 	if m.height <= 0 {
 		return 12
 	}
@@ -1195,7 +1205,7 @@ func (m *Model) resizeFields() {
 	m.fields[3].Width = max(8, min(base, 40))
 }
 
-func (m Model) selectedEpisodeList() []store.KnownEpisode {
+func (m *Model) selectedEpisodeList() []store.KnownEpisode {
 	if m.screen == ScreenSeasonEpisodes {
 		return m.detailSeasonEpisodes
 	}
@@ -1204,7 +1214,7 @@ func (m Model) selectedEpisodeList() []store.KnownEpisode {
 
 // selectedEpisodes returns the chosen IDs, or every open episode in the
 // current list when nothing was explicitly selected.
-func (m Model) selectedEpisodes() []string {
+func (m *Model) selectedEpisodes() []string {
 	episodes := m.selectedEpisodeList()
 	var ids []string
 	for index, episode := range episodes {
@@ -1274,7 +1284,7 @@ func (m *Model) downloadEpisodeIDs(ids []string, emptyMessage string) tea.Cmd {
 	})
 }
 
-func (m Model) handleDetailsKey(key string) (tea.Model, tea.Cmd) {
+func (m *Model) handleDetailsKey(key string) (tea.Model, tea.Cmd) {
 	if m.details.Kind == store.KindSeries && len(m.detailSeasons) > 0 {
 		switch key {
 		case "q", "esc", "backspace":
@@ -1315,11 +1325,11 @@ func (m Model) handleDetailsKey(key string) (tea.Model, tea.Cmd) {
 	return m.handleEpisodeListKey(key, false)
 }
 
-func (m Model) handleSeasonEpisodesKey(key string) (tea.Model, tea.Cmd) {
+func (m *Model) handleSeasonEpisodesKey(key string) (tea.Model, tea.Cmd) {
 	return m.handleEpisodeListKey(key, true)
 }
 
-func (m Model) handleEpisodeListKey(key string, inSeason bool) (tea.Model, tea.Cmd) {
+func (m *Model) handleEpisodeListKey(key string, inSeason bool) (tea.Model, tea.Cmd) {
 	episodes := m.episodes
 	if inSeason {
 		episodes = m.detailSeasonEpisodes
@@ -1394,9 +1404,10 @@ func (m *Model) toggleSeason(index int) {
 	}
 	number := m.seasons[index].Number
 	m.selection[number] = !m.selection[number]
+	m.selectionErr = ""
 }
 
-func (m Model) selectedCategories() []string {
+func (m *Model) selectedCategories() []string {
 	var slugs []string
 	for _, season := range m.seasons {
 		if m.selection[season.Number] {
@@ -1406,7 +1417,7 @@ func (m Model) selectedCategories() []string {
 	return slugs
 }
 
-func (m Model) selectedSeasons() []int {
+func (m *Model) selectedSeasons() []int {
 	var selected []int
 	for _, season := range m.seasons {
 		if m.selection[season.Number] {
