@@ -123,13 +123,11 @@ func TestSettingsSwitchTheTheme(t *testing.T) {
 		t.Fatalf("settings do not show the new scheme:\n%s", model.View())
 	}
 
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	model = updated.(*Model)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
 	if themeMode != ThemeLight {
 		t.Fatalf("theme mode = %v, want light", themeMode)
 	}
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
-	model = updated.(*Model)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
 	if themeMode != ThemeAuto {
 		t.Fatalf("theme mode = %v, want auto", themeMode)
 	}

@@ -80,13 +80,6 @@ func (m *Model) paintRows(lines []string) []string {
 	return painted
 }
 
-// frameLines fits every line to the terminal width and clips the height. When
-// a color scheme is chosen by hand, the lines also carry the surface color
-// of that scheme.
-func (m *Model) frameLines(lines []string) string {
-	return strings.Join(m.paintRows(lines), "\n")
-}
-
 // withBackground puts the surface color behind a rendered line. Every reset
 // inside the line starts the surface color again.
 func withBackground(line, background string) string {
@@ -118,11 +111,6 @@ func (m *Model) frameRows(header, body, footer []string) []string {
 	lines = append(lines, body...)
 	lines = append(lines, footer...)
 	return m.paintRows(lines)
-}
-
-// renderFrame joins header, body and footer into the rendered screen.
-func (m *Model) renderFrame(header, body, footer []string) string {
-	return strings.Join(m.frameRows(header, body, footer), "\n")
 }
 
 // cardInner is the content width inside a card. The two cells of slack cover
