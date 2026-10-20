@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -31,6 +32,8 @@ const (
 	ScreenLibrary
 	ScreenDetails
 	ScreenSeasonEpisodes
+	ScreenSplash
+	ScreenEditEntry
 )
 
 // Messages exchanged with the app through the program loop.
@@ -71,6 +74,16 @@ type SkipRequest struct {
 // EventMsg forwards one app event.
 type EventMsg struct{ Event app.Event }
 
+// toastLevel styles the short message above the key hints.
+type toastLevel int
+
+// Toast levels.
+const (
+	toastInfo toastLevel = iota
+	toastSuccess
+	toastError
+)
+
 // RunDoneMsg reports the end of the download run.
 type RunDoneMsg struct{ Err error }
 
@@ -99,6 +112,15 @@ type job struct {
 	done   int
 	total  int
 	status string
+	// The moments of the download, used for the remaining time.
+	startedAt time.Time
+	updatedAt time.Time
+	lastDone  int
+	// perSegment is the measured time per segment of the last update.
+	perSegment time.Duration
+	// The episode and the series the file belongs to.
+	episodeID string
+	seriesID  int64
 }
 
 type detailSeasonSummary struct {
@@ -116,6 +138,8 @@ type Options struct {
 	NeedsLogin       bool
 	Store            *store.Store
 	Secrets          secret.Store
+	Version          string
+	Splash           bool
 	Run              func(context.Context) error
 	Check            func(context.Context) ([]app.CheckResult, error)
 	DownloadNew      func(context.Context, store.Series) error
@@ -136,12 +160,14 @@ type Model struct {
 	store      *store.Store
 	secrets    secret.Store
 
-	screen      Screen
-	width       int
-	height      int
-	focus       int
-	fields      []textinput.Model
-	helpVisible bool
+	screen       Screen
+	splashTarget Screen
+	version      string
+	width        int
+	height       int
+	focus        int
+	fields       []textinput.Model
+	helpVisible  bool
 
 	seasons         []app.Season
 	selection       map[int]bool
@@ -165,6 +191,20 @@ type Model struct {
 	libMessage     string
 	checking       bool
 	pendingRemoval int64
+	// pendingRemovalFile waits for the second x that deletes a file.
+	pendingRemovalFile bool
+	// libSelected holds the marked entries of the library.
+	libSelected map[int64]bool
+	// The search field filters the library by title.
+	search    textinput.Model
+	searching bool
+
+	// The settings of a single series.
+	editEntry store.Series
+	editTag   textinput.Model
+	editSkip  textinput.Model
+	editFocus int
+	editErr   string
 
 	details              store.Series
 	episodes             []store.KnownEpisode
@@ -181,14 +221,21 @@ type Model struct {
 	downloadReturnScreen Screen
 	downloadReturnSeason int
 	detailReturnSeason   int
+	// downloadSeriesID is the entry of the running download.
+	downloadSeriesID int64
 
-	jobs      []job
-	log       []string
-	startErr  error
-	doneErr   error
-	exitCode  int
-	cancelled bool
-	running   bool
+	jobs         []job
+	log          []string
+	logVisible   bool
+	toast        string
+	toastLevel   toastLevel
+	spinner      spinner.Model
+	clockStarted bool
+	startErr     error
+	doneErr      error
+	exitCode     int
+	cancelled    bool
+	running      bool
 
 	formPurpose     formPurpose
 	pendingDownload *store.Series
@@ -251,6 +298,14 @@ func newModel(opts Options) *Model {
 		// last URL only populates the form.
 		model.screen = ScreenStart
 	}
+	model.version = opts.Version
+	if opts.Splash {
+		// The splash screen hands over to the screen the app starts with.
+		model.splashTarget = model.screen
+		model.screen = ScreenSplash
+		model.busy = true
+	}
+	model.loadTheme()
 
 	url := textinput.New()
 	url.Prompt = ""
@@ -282,6 +337,29 @@ func newModel(opts Options) *Model {
 	styleInput(&tag)
 
 	model.fields = []textinput.Model{url, user, password, tag}
+	model.logVisible = true
+	model.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
+
+	editTag := textinput.New()
+	editTag.Prompt = ""
+	editTag.Width = 24
+	editTag.Placeholder = "Datei-Tag (z. B. example)"
+	styleInput(&editTag)
+
+	editSkip := textinput.New()
+	editSkip.Prompt = ""
+	editSkip.Width = 8
+	editSkip.Placeholder = "0"
+	styleInput(&editSkip)
+	model.editTag = editTag
+	model.editSkip = editSkip
+
+	search := textinput.New()
+	search.Prompt = ""
+	search.Width = 30
+	search.Placeholder = "Titel suchen"
+	styleInput(&search)
+	model.search = search
 	model.skipField = textinput.New()
 	model.skipField.Prompt = ""
 	model.skipField.SetValue("0")
@@ -297,7 +375,7 @@ func (m *Model) loadLibrary() {
 	}
 	entries, err := m.store.SeriesList()
 	if err != nil {
-		m.libMessage = "Bibliothek: " + err.Error()
+		m.setToast("Bibliothek: "+err.Error(), toastError)
 		return
 	}
 	m.library = entries
@@ -325,7 +403,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampDetailOffset()
 		m.clampSeasonOffset()
 		m.resizeFields()
+		if !m.clockStarted {
+			// The clock animates the loading indicator.
+			m.clockStarted = true
+			return m, m.clockTick()
+		}
 		return m, nil
+
+	case splashDoneMsg:
+		m.screen = m.splashTarget
+		m.busy = false
+		switch m.screen {
+		case ScreenStart:
+			return m, textinput.Blink
+		case ScreenLibrary:
+			return m, nil
+		default:
+			return m, m.startRun()
+		}
+
+	case clockMsg:
+		if m.busy {
+			m.spinner, _ = m.spinner.Update(spinner.TickMsg{})
+		}
+		return m, m.clockTick()
 
 	case SeasonsRequest:
 		m.categoryMode = false
@@ -387,11 +488,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDetailsLoadedMsg(typed)
 
 	case checkDoneMsg:
-		m.busy = false
+		m.setBusy(false)
 		m.checking = false
 		if typed.err != nil {
 			m.exitCode = 1
-			m.libMessage = "Prüfung fehlgeschlagen: " + typed.err.Error()
+			m.setToast("Prüfung fehlgeschlagen: "+typed.err.Error(), toastError)
 			return m, m.loadLibraryCmd()
 		}
 		newEpisodes := 0
@@ -414,22 +515,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.libMessage = fmt.Sprintf("%d Serie(n) geprüft, %d neue Folge(n).", len(typed.results), newEpisodes)
+		summary := fmt.Sprintf("%d Serie(n) geprüft, %d neue Folge(n).", len(typed.results), newEpisodes)
+		level := toastSuccess
 		if failed > 0 {
 			m.exitCode = 1
-			m.libMessage += fmt.Sprintf(" %d fehlgeschlagen: %s", failed, firstFailure)
+			level = toastError
+			summary += fmt.Sprintf(" %d fehlgeschlagen: %s", failed, firstFailure)
 		}
 		if notes > 0 {
 			label := "Hinweise"
 			if notes == 1 {
 				label = "Hinweis"
 			}
-			m.libMessage += fmt.Sprintf(" %d %s: %s", notes, label, firstNote)
+			summary += fmt.Sprintf(" %d %s: %s", notes, label, firstNote)
 		}
+		m.setToast(summary, level)
 		return m, m.loadLibraryCmd()
 
 	case downloadNewDoneMsg:
-		m.busy = false
+		m.setBusy(false)
 		if typed.err != nil {
 			m.exitCode = 1
 		}
@@ -456,14 +560,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmd, m.loadLibraryCmd())
 		}
 		if typed.err != nil {
-			m.libMessage = entryTitle(typed.entry) + ": " + typed.err.Error()
+			m.setToast(entryTitle(typed.entry)+": "+typed.err.Error(), toastError)
 		} else if returnScreen == ScreenLibrary {
-			m.libMessage = entryTitle(typed.entry) + ": Folgen geladen."
+			m.setToast(entryTitle(typed.entry)+": Folgen geladen.", toastSuccess)
 		}
 		return m, m.loadLibraryCmd()
 
 	case detailsRefreshDoneMsg:
-		m.busy = false
+		m.setBusy(false)
 		if typed.err != nil {
 			m.exitCode = 1
 		}
@@ -485,7 +589,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case RunDoneMsg:
 		m.running = false
-		m.busy = false
+		m.setBusy(false)
 		m.doneErr = typed.Err
 		if typed.Err != nil {
 			m.exitCode = 1
@@ -504,6 +608,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // Init starts the run or the input screen.
 func (m *Model) Init() tea.Cmd {
+	if m.screen == ScreenSplash {
+		return tea.Batch(m.splashTick(), m.clockTick())
+	}
 	if m.screen == ScreenStart {
 		return textinput.Blink
 	}
@@ -599,11 +706,11 @@ func (m *Model) checkLibrary() tea.Cmd {
 	if m.busy {
 		return nil
 	}
-	m.busy = true
 	m.checking = true
 	m.libMessage = "Prüfe gespeicherte Serien…"
 	check := m.opts.Check
 	ctx := m.ctx
+	m.setBusy(true)
 	return m.track(func() tea.Msg {
 		results, err := check(ctx)
 		return checkDoneMsg{results: results, err: err}
@@ -617,11 +724,12 @@ func (m *Model) downloadNew(entry store.Series) tea.Cmd {
 	if m.busy {
 		return nil
 	}
-	m.busy = true
 	m.libMessage = "Lade neue Folgen von " + entryTitle(entry) + "…"
+	m.downloadSeriesID = entry.ID
 	m.beginDownload()
 	downloadNew := m.opts.DownloadNew
 	ctx := m.ctx
+	m.setBusy(true)
 	return m.track(func() tea.Msg {
 		return downloadNewDoneMsg{entry: entry, err: downloadNew(ctx, entry)}
 	})

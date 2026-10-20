@@ -128,8 +128,8 @@ func TestStoreCmdPendingCountReportsNoOpenEpisodes(t *testing.T) {
 	if called {
 		t.Fatal("no open episodes must not start a download")
 	}
-	if want := "Test Show: keine offenen Folgen."; model.libMessage != want {
-		t.Fatalf("libMessage = %q, want %q", model.libMessage, want)
+	if want := "Test Show: keine offenen Folgen."; model.toast != want {
+		t.Fatalf("toast = %q, want %q", model.toast, want)
 	}
 }
 

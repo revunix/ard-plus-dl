@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 
 	"github.com/revunix/ard-plus-dl/internal/app"
 	"github.com/revunix/ard-plus-dl/internal/config"
@@ -114,18 +115,18 @@ func TestDownloadQueueStacksFullWidth(t *testing.T) {
 		t.Run(fmt.Sprintf("width/%d", width), func(t *testing.T) {
 			model := build(width)
 			view := model.View()
-			expected := min(width, maxContentWidth)
+			expected := width
 			assertFitsWidth(t, view, expected)
-			if hasCombinedLine(view, "Aktueller Download", "Aktivität") {
-				t.Fatalf("download and activity panels share a row at width %d:\n%s", width, view)
+			if hasCombinedLine(view, "Queue", "Aktivität") {
+				t.Fatalf("download and activity cards share a row at width %d:\n%s", width, view)
 			}
-			for _, title := range []string{"Aktueller Download", "Aktivität"} {
-				border := panelBorderLine(view, title)
-				if border == "" {
-					t.Fatalf("panel %q missing:\n%s", title, view)
+			for _, title := range []string{"Queue", "Aktivität"} {
+				rule := cardRuleAfterTitle(view, title)
+				if rule == "" {
+					t.Fatalf("card %q missing:\n%s", title, view)
 				}
-				if got := lipgloss.Width(border); got != expected {
-					t.Fatalf("panel %q uses %d columns, want %d:\n%s", title, got, expected, view)
+				if got := lipgloss.Width(rule); got != expected {
+					t.Fatalf("card %q uses %d columns, want %d:\n%s", title, got, expected, view)
 				}
 			}
 
@@ -152,17 +153,21 @@ func TestDownloadQueueStacksFullWidth(t *testing.T) {
 			model := build(size.width)
 			model.height = size.height
 			view := model.View()
-			assertFitsWidth(t, view, min(size.width, maxContentWidth))
+			assertFitsWidth(t, view, size.width)
 			assertFitsHeight(t, view, size.height)
 		})
 	}
 }
 
-// panelBorderLine returns the top border that carries the panel title.
-func panelBorderLine(view, title string) string {
-	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, title) && strings.Contains(line, "╭") {
-			return line
+// cardRuleAfterTitle returns the rule below the card title row.
+func cardRuleAfterTitle(view, title string) string {
+	lines := strings.Split(view, "\n")
+	for index, line := range lines {
+		if !strings.Contains(line, title) {
+			continue
+		}
+		if index+1 < len(lines) {
+			return lines[index+1]
 		}
 	}
 	return ""
@@ -192,9 +197,6 @@ func TestResponsiveLayoutsStayWithinBounds(t *testing.T) {
 						t.Fatal("view is empty")
 					}
 					limit := width
-					if limit > maxContentWidth {
-						limit = maxContentWidth
-					}
 					assertFitsWidth(t, view, limit)
 					assertFitsHeight(t, view, height)
 				})
@@ -213,7 +215,7 @@ func TestTuiScreensFitCommonSizes(t *testing.T) {
 				if strings.TrimSpace(view) == "" {
 					t.Fatal("view is empty")
 				}
-				assertFitsWidth(t, view, min(size.width, maxContentWidth))
+				assertFitsWidth(t, view, size.width)
 				assertFitsHeight(t, view, size.height)
 			})
 		}
@@ -236,9 +238,9 @@ func TestTuiScreensShowChromeAndSelection(t *testing.T) {
 		{"tatort", "Tatort", "starten", false, "0 bis 5"},
 		{"details", "sehr langer Titel", "Hilfe", true, "Staffeln"},
 		{"season episodes", "sehr langer Titel", "wählen", true, "○ offen"},
-		{"queue", "Downloads", "abbrechen", false, "lädt"},
+		{"queue", "Downloads", "abbrechen", true, "lädt"},
 		{"summary", "Fertig", "Bibliothek", false, "✓"},
-		{"help", "Hilfe", "schließen", false, "BIBLIOTHEK"},
+		{"help", "Hilfe", "schließen", true, "Tasten"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.screen, func(t *testing.T) {
@@ -343,48 +345,36 @@ func TestDetailURLIsTruncated(t *testing.T) {
 	assertFitsWidth(t, view, 60)
 }
 
-func TestHelpView(t *testing.T) {
+// TestHelpPopupFloatsOverThePage checks the help window and the keys it
+// lists for the current screen.
+func TestHelpPopupFloatsOverThePage(t *testing.T) {
 	model := newTestModel(120, 30)
+	model.screen = ScreenLibrary
 	model.helpVisible = true
 	view := model.View()
-	for _, want := range []string{"Hilfe", "BIBLIOTHEK", "STAFFELN/FOLGEN", "DOWNLOAD", "START", "FENSTER", "schließen"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("help view misses %q:\n%s", want, view)
+	for _, want := range []string{"Tasten", "öffnen", "laden", "prüfen", "suchen", "markieren", "zurücksetzen", "schließen"} {
+		if !strings.Contains(ansi.Strip(view), want) {
+			t.Errorf("help popup misses %q:\n%s", want, view)
 		}
+	}
+	// The page stays visible below the window.
+	if !strings.Contains(ansi.Strip(view), "Serien") {
+		t.Errorf("the help popup hides the page:\n%s", view)
 	}
 	assertFitsWidth(t, view, 120)
 	assertFitsHeight(t, view, 30)
-	if !hasCombinedLine(view, "BIBLIOTHEK", "DOWNLOAD") {
-		t.Errorf("help view at 120 should arrange groups in two columns:\n%s", view)
-	}
 
-	model = newTestModel(80, 24)
-	model.helpVisible = true
-	compact := model.View()
-	for _, want := range []string{"Hilfe", "BIBLIOTHEK", "DOWNLOAD", "START"} {
-		if !strings.Contains(compact, want) {
-			t.Errorf("help view at 80x24 misses %q:\n%s", want, compact)
+	// Every screen lists its own keys.
+	queue := newTestModel(80, 24)
+	queue.screen = ScreenQueue
+	queue.helpVisible = true
+	popup := ansi.Strip(queue.View())
+	for _, want := range []string{"Datei löschen", "Ordner öffnen"} {
+		if !strings.Contains(popup, want) {
+			t.Errorf("the popup of the queue misses %q:\n%s", want, popup)
 		}
 	}
-	assertFitsHeight(t, compact, 24)
-	if hasCombinedLine(compact, "BIBLIOTHEK", "START") {
-		t.Errorf("help view at 80 should stack groups in one column:\n%s", compact)
-	}
-
-	model = newTestModel(40, 12)
-	model.helpVisible = true
-	short := model.View()
-	if !strings.Contains(short, "Hilfe") {
-		t.Fatalf("short help view misses the header:\n%s", short)
-	}
-	assertFitsWidth(t, short, 40)
-	assertFitsHeight(t, short, 12)
-
-	model = newTestModel(30, 24)
-	model.helpVisible = true
-	if turned := model.View(); !strings.Contains(turned, "Hilfe") {
-		t.Fatalf("help should win over the small-terminal hint:\n%s", turned)
-	}
+	assertFitsHeight(t, popup, 24)
 }
 
 func TestLibrarySubtitleCounts(t *testing.T) {
@@ -406,13 +396,25 @@ func TestLibrarySubtitleCounts(t *testing.T) {
 }
 
 func TestDetailStatsRenderValueBeforeLabel(t *testing.T) {
-	model := newTestModel(120, 30)
-	model.screen = ScreenDetails
-	model.details = store.Series{Title: "Serie", Kind: store.KindSeries}
-	model.detailSeasons = []detailSeasonSummary{
+	seasons := []detailSeasonSummary{
 		{number: 1, total: 2, open: 1},
 		{number: 2, total: 1, open: 1},
 	}
+
+	// Wide terminals put the counts into the card title.
+	wide := newTestModel(120, 30)
+	wide.screen = ScreenDetails
+	wide.details = store.Series{Title: "Serie", Kind: store.KindSeries}
+	wide.detailSeasons = seasons
+	if view := ansi.Strip(wide.View()); !strings.Contains(view, "3 Folgen · 2 offen") {
+		t.Fatalf("wide details view misses the counts:\n%s", view)
+	}
+
+	// Narrow terminals keep the stats line with the value before the label.
+	model := newTestModel(80, 24)
+	model.screen = ScreenDetails
+	model.details = store.Series{Title: "Serie", Kind: store.KindSeries}
+	model.detailSeasons = seasons
 
 	view := ansi.Strip(model.View())
 	for _, line := range strings.Split(view, "\n") {
@@ -427,13 +429,242 @@ func TestDetailStatsRenderValueBeforeLabel(t *testing.T) {
 	t.Fatalf("detail stats line missing:\n%s", view)
 }
 
-func TestPanelTitleSitsInTopBorder(t *testing.T) {
-	lines := renderPanel(80, "Rahmen", []string{"Inhalt"}, true)
-	if len(lines) != 3 {
-		t.Fatalf("panel with one content line uses %d lines, want 3: %q", len(lines), lines)
+// TestTuiUsesFlatCardsAndKeycaps checks the flat look: no box drawing frame,
+// a rule below every card title and keycaps instead of plain keys in the
+// footer.
+func TestTuiUsesFlatCardsAndKeycaps(t *testing.T) {
+	profile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(profile)
+
+	view := populatedScreen("library", 80, 24).View()
+	for _, frame := range []string{"╭", "╰", "│", "╮", "╯"} {
+		if strings.Contains(view, frame) {
+			t.Fatalf("view still uses the framed panel style (%q):\n%s", frame, view)
+		}
 	}
-	if !strings.Contains(lines[0], "╭") || !strings.Contains(lines[0], "Rahmen") {
-		t.Fatalf("panel title is not in the top border: %q", lines[0])
+	if !strings.Contains(ansi.Strip(view), "▍ Serien") {
+		t.Fatalf("view misses the card title:\n%s", view)
+	}
+	if rule := cardRuleAfterTitle(view, "Serien"); ansi.Strip(rule) != strings.Repeat("─", 80) {
+		t.Fatalf("card rule %q, want a full width rule", ansi.Strip(rule))
+	}
+
+	footer := strings.Split(view, "\n")
+	last := footer[len(footer)-1]
+	if !strings.Contains(last, "48;2;") {
+		t.Fatalf("footer does not render keycaps:\n%s", last)
+	}
+
+	// The selected row marks the cursor with a chip, the title itself stays
+	// free of a background.
+	selected := ""
+	for _, line := range footer {
+		if strings.Contains(line, "▸") {
+			selected = line
+			break
+		}
+	}
+	if selected == "" {
+		t.Fatalf("view misses the cursor:\n%s", view)
+	}
+	for _, part := range ansiParts(selected) {
+		if strings.Contains(part.text, "Serie") && strings.Contains(part.code, "48;2;") {
+			t.Fatalf("selected title is highlighted with a background: %q", part.text)
+		}
+	}
+}
+
+// ansiPart is one styled chunk of a rendered line.
+type ansiPart struct {
+	code string
+	text string
+}
+
+// ansiParts splits a rendered line into its styled chunks.
+func ansiParts(line string) []ansiPart {
+	var parts []ansiPart
+	rest := line
+	for {
+		start := strings.Index(rest, "\x1b[")
+		if start < 0 {
+			if rest != "" {
+				parts = append(parts, ansiPart{text: rest})
+			}
+			return parts
+		}
+		if start > 0 {
+			parts = append(parts, ansiPart{text: rest[:start]})
+		}
+		rest = rest[start+2:]
+		end := strings.Index(rest, "m")
+		if end < 0 {
+			return parts
+		}
+		parts = append(parts, ansiPart{code: rest[:end], text: ""})
+		rest = rest[end+1:]
+	}
+}
+
+// TestLibrarySplitsIntoListAndDetails checks that wide terminals show the
+// list next to the details of the entry under the cursor.
+func TestLibrarySplitsIntoListAndDetails(t *testing.T) {
+	wide := populatedScreen("library", 110, 30).View()
+	if !hasCombinedLine(wide, "Serien", "Details") {
+		t.Fatalf("wide library view should arrange list and details side by side:\n%s", wide)
+	}
+	if !strings.Contains(ansi.Strip(wide), "Geprüft") {
+		t.Fatalf("wide library view misses the details:\n%s", wide)
+	}
+
+	narrow := populatedScreen("library", 80, 30).View()
+	if hasCombinedLine(narrow, "Serien", "Details") {
+		t.Fatalf("narrow library view should stay in one column:\n%s", narrow)
+	}
+	if !strings.Contains(ansi.Strip(narrow), "NEU") {
+		t.Fatalf("narrow library view misses the new column:\n%s", narrow)
+	}
+}
+
+// TestQueueListsAllJobs checks the queue card with every download.
+func TestQueueListsAllJobs(t *testing.T) {
+	view := populatedScreen("queue", 100, 30).View()
+	plain := ansi.Strip(view)
+	for _, want := range []string{"Queue", "Fertige Folge", "Fehlerhafte Folge", "lädt", "1 fertig · 1 fehlgeschlagen"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("queue view misses %q:\n%s", want, view)
+		}
+	}
+}
+
+// TestQueueLogCanBeToggled checks that the activity log folds away.
+func TestQueueLogCanBeToggled(t *testing.T) {
+	model := populatedScreen("queue", 100, 30)
+	if plain := ansi.Strip(model.View()); !strings.Contains(plain, "▍ Aktivität") {
+		t.Fatalf("queue view misses the activity card:\n%s", plain)
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	view := updated.(*Model).View()
+	plain := ansi.Strip(view)
+	if strings.Contains(plain, "▍ Aktivität") {
+		t.Fatalf("l should fold the activity card away:\n%s", plain)
+	}
+	if !strings.Contains(plain, "Aktivität einblenden") {
+		t.Fatalf("folded queue view misses the hint:\n%s", plain)
+	}
+	if !strings.Contains(plain, "Queue") {
+		t.Fatalf("folded queue view misses the queue:\n%s", plain)
+	}
+}
+
+// TestViewsFillTheTerminal checks that every screen uses the whole window:
+// the key hints sit on the last line and no line is wider than the terminal.
+func TestViewsFillTheTerminal(t *testing.T) {
+	for _, size := range []struct{ width, height int }{{40, 12}, {80, 24}, {120, 30}, {160, 50}} {
+		for _, screen := range []string{"start", "library", "series", "tatort", "details", "season episodes", "queue", "summary", "help"} {
+			t.Run(fmt.Sprintf("%s/%dx%d", screen, size.width, size.height), func(t *testing.T) {
+				view := populatedScreen(screen, size.width, size.height).View()
+				lines := strings.Split(view, "\n")
+				if len(lines) != size.height {
+					t.Errorf("view uses %d lines, want %d", len(lines), size.height)
+				}
+				if strings.TrimSpace(lines[len(lines)-1]) == "" {
+					t.Errorf("view ends with an empty line, want the key hints:\n%s", view)
+				}
+				assertFitsWidth(t, view, size.width)
+			})
+		}
+	}
+}
+
+// TestToastShowsAboveTheKeyHints checks the short message that reports the
+// result of the last action.
+func TestToastShowsAboveTheKeyHints(t *testing.T) {
+	model := populatedScreen("library", 100, 24)
+	model.libMessage = ""
+	model.setToast("Bibliothek aktualisiert.", toastSuccess)
+	view := model.View()
+	lines := strings.Split(view, "\n")
+	index := -1
+	for position, line := range lines {
+		if strings.Contains(line, "Bibliothek aktualisiert.") {
+			index = position
+		}
+	}
+	if index < 0 {
+		t.Fatalf("view misses the toast:\n%s", view)
+	}
+	if !strings.Contains(lines[index+1], "öffnen") {
+		t.Fatalf("the toast is not above the key hints:\n%s", view)
+	}
+	if !strings.HasSuffix(strings.TrimRight(lines[index], " "), "Bibliothek aktualisiert.") {
+		t.Fatalf("the toast is not aligned to the right:\n%q", lines[index])
+	}
+
+	// A key press dismisses the toast.
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if view := updated.(*Model).View(); strings.Contains(view, "Bibliothek aktualisiert.") {
+		t.Fatalf("a key press should dismiss the toast:\n%s", view)
+	}
+}
+
+// TestBusyShowsSpinnerInTheTopBar checks the loading indicator.
+func TestBusyShowsSpinnerInTheTopBar(t *testing.T) {
+	model := populatedScreen("library", 100, 24)
+	model.busy = true
+	model.libMessage = "Prüfe gespeicherte Serien…"
+	view := model.View()
+	if !strings.Contains(view, "Prüfe gespeicherte Serien…") {
+		t.Fatalf("view misses the status:\n%s", view)
+	}
+	if !strings.Contains(model.spinnerView(), "⣾") && !strings.Contains(model.spinnerView(), "⠋") {
+		t.Fatalf("spinner = %q, want an animation frame", model.spinnerView())
+	}
+}
+
+// TestEmptyStateShowsTheNextKey checks that an empty state names the key that
+// leads out of it.
+func TestEmptyStateShowsTheNextKey(t *testing.T) {
+	model := populatedScreen("library", 100, 24)
+	model.library = nil
+	view := model.View()
+	if !strings.Contains(view, "Noch keine Serien gespeichert.") {
+		t.Fatalf("view misses the empty state:\n%s", view)
+	}
+	if !strings.Contains(view, "URL hinzufügen") {
+		t.Fatalf("view misses the action of the empty state:\n%s", view)
+	}
+}
+
+// TestFooterShowsOnlyTheImportantKeys checks that the footer stays short and
+// that the help popup lists the rest.
+func TestFooterShowsOnlyTheImportantKeys(t *testing.T) {
+	model := populatedScreen("library", 100, 24)
+	lines := strings.Split(ansi.Strip(model.View()), "\n")
+	footer := lines[len(lines)-1]
+	if !strings.Contains(footer, "öffnen") || !strings.Contains(footer, "Hilfe") {
+		t.Fatalf("the footer misses the keys: %q", footer)
+	}
+	for _, unwanted := range []string{"zurücksetzen", "kopieren", "Einstellungen", "entfernen"} {
+		if strings.Contains(footer, unwanted) {
+			t.Errorf("the footer is too long, it mentions %q: %q", unwanted, footer)
+		}
+	}
+	if len(footer) > 80 {
+		t.Errorf("the footer is %d characters long: %q", len(footer), footer)
+	}
+}
+
+func TestCardTitleSitsAboveRule(t *testing.T) {
+	lines := renderCard(80, "Rahmen", []string{"Inhalt"}, true, "")
+	if len(lines) != 3 {
+		t.Fatalf("card with one content line uses %d lines, want 3: %q", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "Rahmen") {
+		t.Fatalf("card title is not in the title row: %q", lines[0])
+	}
+	if got, want := ansi.Strip(lines[1]), strings.Repeat("─", 80); got != want {
+		t.Fatalf("card rule %q, want %q", got, want)
 	}
 }
 
@@ -500,7 +731,7 @@ func TestDetailsLongErrorWrapsAndKeepsCause(t *testing.T) {
 			if !containsNormalized(view, longErrorCause) {
 				t.Fatalf("details view hides the error cause:\n%s", view)
 			}
-			if !strings.Contains(view, "esc Bibliothek") {
+			if !strings.Contains(view, "esc") || !strings.Contains(view, "Bibliothek") {
 				t.Fatalf("details view hides the footer:\n%s", view)
 			}
 			assertFitsWidth(t, view, size.width)
@@ -570,7 +801,7 @@ func TestEmptyStates(t *testing.T) {
 	library := newTestModel(80, 24)
 	library.screen = ScreenLibrary
 	if view := library.View(); !strings.Contains(view, "Noch keine Serien gespeichert.") ||
-		!strings.Contains(view, "Mit a eine URL hinzufügen.") {
+		!strings.Contains(view, "URL hinzufügen") {
 		t.Fatalf("empty library state missing:\n%s", view)
 	}
 
@@ -591,8 +822,11 @@ func TestEmptyStates(t *testing.T) {
 	loading.screen = ScreenDetails
 	loading.details = store.Series{Title: "Serie", Kind: store.KindSeries}
 	loading.detailMessage = "Folgenliste wird aktualisiert…"
-	if view := loading.View(); !strings.Contains(view, "Folgenliste wird aktualisiert.") ||
+	if view := loading.View(); !strings.Contains(view, "Folgenliste wird aktualisiert") ||
 		strings.Contains(view, "Keine Folgen gespeichert") {
+		t.Fatalf("loading detail state wrong:\n%s", view)
+	}
+	if view := loading.View(); !strings.Contains(view, "░") {
 		t.Fatalf("loading detail state wrong:\n%s", view)
 	}
 

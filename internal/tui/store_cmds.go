@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -41,7 +43,7 @@ func (m *Model) loadLibraryCmd() tea.Cmd {
 
 func (m *Model) handleLibraryMsg(typed libraryMsg) (tea.Model, tea.Cmd) {
 	if typed.err != nil {
-		m.libMessage = "Bibliothek: " + typed.err.Error()
+		m.setToast("Bibliothek: "+typed.err.Error(), toastError)
 		return m, nil
 	}
 	m.library = typed.entries
@@ -65,7 +67,7 @@ func (m *Model) pendingCountCmd(entry store.Series) tea.Cmd {
 
 func (m *Model) handlePendingCountMsg(typed pendingCountMsg) (tea.Model, tea.Cmd) {
 	if typed.err != nil {
-		m.libMessage = typed.err.Error()
+		m.setToast(typed.err.Error(), toastError)
 		return m, nil
 	}
 	pending := typed.count
@@ -73,11 +75,11 @@ func (m *Model) handlePendingCountMsg(typed pendingCountMsg) (tea.Model, tea.Cmd
 		pending = typed.entry.NewCount
 	}
 	if pending == 0 && typed.entry.Kind != store.KindMovie {
-		m.libMessage = entryTitle(typed.entry) + ": keine offenen Folgen."
+		m.setToast(entryTitle(typed.entry)+": keine offenen Folgen.", toastInfo)
 		return m, nil
 	}
 	if m.busy {
-		m.libMessage = "Bitte warten, eine Aktion läuft noch."
+		m.setToast("Bitte warten, eine Aktion läuft noch.", toastInfo)
 		return m, nil
 	}
 	if err := m.readyForDownload(); err != nil {
@@ -110,6 +112,122 @@ func (m *Model) setEnabledCmd(entry store.Series, enabled bool) tea.Cmd {
 	})
 }
 
+// editEntryCmd stores the file tag and the skip count of a library entry.
+func (m *Model) editEntryCmd(tag string, skip int) tea.Cmd {
+	if m.store == nil {
+		return nil
+	}
+	state := m.store
+	entry := m.editEntry
+	return m.track(func() tea.Msg {
+		err := state.SetSeriesTag(entry.ID, tag)
+		if err == nil {
+			err = state.SetSeriesSkip(entry.ID, skip)
+		}
+		message := ""
+		if err == nil {
+			message = entryTitle(entry) + ": gespeichert."
+		}
+		return storeActionMsg{err: err, message: message}
+	})
+}
+
+// removeJobFileCmd deletes the file of the active download and forgets that
+// the episode was downloaded.
+func (m *Model) removeJobFileCmd() tea.Cmd {
+	index := m.currentJobIndex()
+	if index < 0 || index >= len(m.jobs) {
+		return nil
+	}
+	job := m.jobs[index]
+	if job.path == "" {
+		m.setToast("Für diese Datei gibt es keinen Pfad.", toastError)
+		return nil
+	}
+	if err := m.checkDownloadPath(job.path); err != nil {
+		m.setToast("Datei nicht gelöscht: "+err.Error(), toastError)
+		return nil
+	}
+	if !m.pendingRemovalFile {
+		m.pendingRemovalFile = true
+		m.libMessage = "x erneut drücken, um die Datei zu löschen: " + job.path
+		return nil
+	}
+	m.pendingRemovalFile = false
+	if err := m.removeDownloadFile(job.path); err != nil {
+		m.setToast("Datei nicht gelöscht: "+err.Error(), toastError)
+		return nil
+	}
+	// The episode counts as open again.
+	if m.store != nil && job.seriesID > 0 && job.episodeID != "" {
+		if err := m.store.ClearDownloaded(job.seriesID, job.episodeID); err != nil {
+			m.setToast("Datei gelöscht, Verlauf nicht zurückgesetzt: "+err.Error(), toastError)
+			return nil
+		}
+	}
+	m.jobs[index].status = "gelöscht"
+	m.setToast("Datei gelöscht: "+filepath.Base(job.path), toastSuccess)
+	return m.loadLibraryCmd()
+}
+
+// resetEntryCmd deletes the downloaded files of a series and forgets its
+// history, so every episode is offered again.
+func (m *Model) resetEntryCmd(entry store.Series) tea.Cmd {
+	if m.store == nil {
+		return nil
+	}
+	state := m.store
+	return m.track(func() tea.Msg {
+		episodes, err := state.Episodes(entry.ID)
+		if err != nil {
+			return storeActionMsg{err: err}
+		}
+		removed := 0
+		for _, episode := range episodes {
+			if episode.Path == "" {
+				continue
+			}
+			if err := m.removeDownloadFile(episode.Path); err != nil {
+				continue
+			}
+			removed++
+		}
+		if err := state.ClearEpisodes(entry.ID); err != nil {
+			return storeActionMsg{err: err}
+		}
+		message := fmt.Sprintf("%s zurückgesetzt: %d Datei(en) gelöscht, Verlauf geleert.",
+			entryTitle(entry), removed)
+		return storeActionMsg{message: message}
+	})
+}
+
+// removeMarkedCmd deletes the marked entries of the library.
+func (m *Model) removeMarkedCmd(entries []store.Series) tea.Cmd {
+	if m.store == nil || len(entries) == 0 {
+		return nil
+	}
+	state := m.store
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entryTitle(entry))
+	}
+	m.libSelected = map[int64]bool{}
+	return m.track(func() tea.Msg {
+		var failure error
+		for _, entry := range entries {
+			if err := state.RemoveSeries(entry.ID); err != nil {
+				failure = err
+				break
+			}
+		}
+		message := fmt.Sprintf("%d %s entfernt.", len(names), entryWord(len(names)))
+		if failure != nil {
+			message = strings.Join(names, ", ") + ": " + failure.Error()
+		}
+		return storeActionMsg{err: failure, message: message}
+	})
+}
+
 // removeSeriesCmd deletes a library entry and its episode history.
 func (m *Model) removeSeriesCmd(entry store.Series) tea.Cmd {
 	if m.store == nil {
@@ -128,11 +246,15 @@ func (m *Model) removeSeriesCmd(entry store.Series) tea.Cmd {
 
 func (m *Model) handleStoreActionMsg(typed storeActionMsg) (tea.Model, tea.Cmd) {
 	if typed.err != nil {
-		m.libMessage = typed.err.Error()
+		m.setToast(typed.err.Error(), toastError)
 		return m, nil
 	}
-	m.libMessage = typed.message
+	m.setToast(typed.message, toastSuccess)
 	m.pendingRemoval = 0
+	if m.screen == ScreenEditEntry {
+		// The settings are saved, the library takes over again.
+		m.screen = ScreenLibrary
+	}
 	return m, m.loadLibraryCmd()
 }
 
@@ -186,7 +308,7 @@ func (m *Model) handleDetailsLoadedMsg(typed detailsLoadedMsg) (tea.Model, tea.C
 		if m.hasDetailSeason(season) {
 			m.openSeasonEpisodes(season)
 		} else {
-			m.detailMessage = fmt.Sprintf("Staffel %d ist nicht mehr verfügbar.", season)
+			m.setToast(fmt.Sprintf("Staffel %d ist nicht mehr verfügbar.", season), toastError)
 		}
 	}
 	return m, nil

@@ -3,88 +3,146 @@ package tui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/textinput"
 )
 
-func (m *Model) helpView() string {
-	width := m.contentWidth()
-	header := renderHeader(width, "Hilfe", "Tasten und Befehle")
-	hintLine := func(innerWidth int, pairs ...string) string {
-		parts := make([]string, 0, len(pairs)/2)
-		for index := 0; index+1 < len(pairs); index += 2 {
-			parts = append(parts, theme.Key.Render(pairs[index])+" "+theme.Muted.Render(pairs[index+1]))
-		}
-		return fitLine("  "+strings.Join(parts, " · "), innerWidth)
+// splashView shows the logo while the app starts.
+func (m *Model) splashView() []string {
+	width := m.frameWidth()
+	logo := gradientText("ard-plus-dl")
+	lines := []string{theme.Title.Render(logo)}
+	lines = append(lines, theme.Muted.Render("ARD Plus Downloader"))
+	lines = append(lines, theme.Divider.Render(strings.Repeat("─", 24)))
+	if m.version != "" {
+		lines = append(lines, theme.Muted.Render("Version "+m.version))
 	}
-	groups := func(innerWidth int) [][]string {
-		return [][]string{
-			{
-				renderSection("Bibliothek"),
-				hintLine(innerWidth, "enter", "öffnen", "d", "laden", "n", "prüfen"),
-				hintLine(innerWidth, "space", "aktiv", "a", "URL", "s", "Einstellungen", "x", "entfernen"),
-				hintLine(innerWidth, "q", "beenden"),
-			},
-			{
-				renderSection("Staffeln/Folgen"),
-				hintLine(innerWidth, "up/down", "wählen", "space", "markieren", "a", "alle/keine"),
-				hintLine(innerWidth, "enter/d", "laden", "esc", "zurück"),
-			},
-			{
-				renderSection("Download"),
-				hintLine(innerWidth, "q/ctrl+c", "abbrechen, erneut beenden"),
-			},
-			{
-				renderSection("Start"),
-				hintLine(innerWidth, "tab", "Feld", "enter", "starten/speichern"),
-				hintLine(innerWidth, "esc", "zurück", "ctrl+c", "beenden"),
-			},
-			{
-				renderSection("Fenster"),
-				hintLine(innerWidth, "?", "Hilfe schließen"),
-			},
-		}
-	}
-
-	inner := panelInner(width)
-	var content []string
-	if width >= 120 {
-		// Two columns keep the help compact on wide terminals.
-		leftWidth := (inner - 2) / 2
-		rightWidth := inner - leftWidth - 2
-		leftGroups := groups(leftWidth)
-		rightGroups := groups(rightWidth)
-		var left, right []string
-		for _, group := range leftGroups[:2] {
-			left = append(left, group...)
-		}
-		for _, group := range rightGroups[2:] {
-			right = append(right, group...)
-		}
-		content = strings.Split(joinColumns(left, right, leftWidth, rightWidth), "\n")
-	} else {
-		for _, group := range groups(inner) {
-			content = append(content, group...)
-		}
-	}
-	footer := renderFooter(width, []keyHint{{Key: "esc", Label: "Hilfe schließen"}})
-	budget := listBudget(m.height, header, footer, 0, width, "Übersicht")
-	if budget > 0 && len(content) > budget {
-		content = content[:budget]
-	}
-	panel := renderPanel(width, "Übersicht", fitInner(content, inner), true)
-	return m.renderFrame(header, panel, footer)
+	lines = append(lines, m.spinnerView()+" "+theme.Muted.Render("Bibliothek wird geladen…"))
+	return m.frameRows(nil, centerBlock(width, m.height, lines), nil)
 }
 
-func (m *Model) startView() string {
-	width := m.contentWidth()
+// centerBlock centers lines in the middle of the screen and fills the rest.
+func centerBlock(width, height int, lines []string) []string {
+	if width <= 0 {
+		return lines
+	}
+	block := make([]string, 0, len(lines))
+	for _, line := range lines {
+		block = append(block, centerLine(line, width))
+	}
+	if height <= 0 {
+		return block
+	}
+	top := max(0, (height-len(block))/2)
+	out := make([]string, 0, height)
+	for range top {
+		out = append(out, "")
+	}
+	out = append(out, block...)
+	for len(out) < height {
+		out = append(out, "")
+	}
+	return out
+}
+
+// editEntryView shows the settings of a single series: the file tag and the
+// number of episodes to skip.
+func (m *Model) editEntryView() []string {
+	width := m.frameWidth()
+	header := m.header("Serie", entryTitle(m.editEntry))
+
+	labels := []string{"Datei-Tag", "Überspringen"}
+	rows := make([]string, 0, len(labels))
+	for index, field := range []textinput.Model{m.editTag, m.editSkip} {
+		marker := "  "
+		labelStyle := theme.Muted
+		if index == m.editFocus {
+			marker = theme.Cursor.Render("▸ ")
+			labelStyle = theme.Accent.Bold(true)
+		}
+		rows = append(rows, marker+labelStyle.Render(padRight(labels[index], 14))+" "+field.View())
+	}
+	rows = append(rows, "")
+	rows = append(rows, theme.Muted.Render("Der Datei-Tag steht am Ende jedes Dateinamens. 0 oder 1 überspringt keine Folge."))
+
+	footer := m.screenFooter(width)
+
+	var errorLines []string
+	if m.editErr != "" {
+		errorLines = wrapText(m.editErr, m.flowWidth(width))
+	}
+	card := renderCard(width, "Einstellungen", fitInner(rows, m.cardTextWidth(width)), true, "")
+	body := card
+	if len(errorLines) > 0 {
+		body = append(body, "")
+		for index, line := range errorLines {
+			text := line
+			if index == 0 {
+				text = theme.Danger.Render("● ") + line
+			}
+			body = append(body, fitLine(theme.Danger.Render(text), width))
+		}
+	}
+	return m.frameRows(header, body, footer)
+}
+
+// helpPopup returns the window with all keys of the current screen. It
+// floats over the page instead of replacing it.
+func (m *Model) helpPopup() []string {
+	hints := m.hints().full
+	if len(hints) == 0 {
+		hints = []keyHint{{Key: "?", Label: "Hilfe"}}
+	}
+	entries := make([]string, 0, len(hints))
+	for _, hint := range hints {
+		entries = append(entries, renderKeycap(hint.Key)+" "+theme.KeyLabel.Render(hint.Label))
+	}
+	entries = append(entries, renderKeycap("ctrl+c")+" "+theme.KeyLabel.Render("beenden"))
+
+	columns := 1
+	columnWidth := 34
+	if m.frameWidth() >= 76 {
+		// Two columns keep the window short.
+		columns = 2
+		columnWidth = 32
+	}
+	var lines []string
+	if columns == 2 {
+		half := (len(entries) + 1) / 2
+		left := entries[:half]
+		right := entries[half:]
+		for len(right) < len(left) {
+			right = append(right, "")
+		}
+		lines = strings.Split(joinColumns(left, right, columnWidth, columnWidth), "\n")
+	} else {
+		lines = entries
+	}
+	// The window has to fit on the screen.
+	if m.height > 0 && len(lines)+4 > m.height-2 {
+		lines = lines[:max(1, m.height-6)]
+		lines = append(lines, theme.Muted.Render("… weitere Tasten im Hilfe-Fenster"))
+	}
+	return renderPopup(min(2*columnWidth+6, m.frameWidth()), "Tasten", lines)
+}
+
+func (m *Model) startView() []string {
+	width := m.frameWidth()
 	title := "Start"
 	subtitle := "Zugang und Download-Ziel"
+	cardTitle := "Zugang"
+	hint := "Zugangsdaten werden lokal gespeichert und nur für die Anmeldung bei ARD Plus verwendet."
 	switch m.formPurpose {
 	case formSettings:
 		subtitle = "Einstellungen"
+		cardTitle = "Einstellungen"
+		hint = "Der Datei-Tag steht am Ende jedes Dateinamens und muss gesetzt sein."
 	case formAddURL:
 		subtitle = "Neue URL hinzufügen"
+		cardTitle = "Neue Serie"
+		hint = "Die URL muss auf eine Serie, einen Film oder eine Tatort-Stadt zeigen."
 	}
-	header := renderHeader(width, title, subtitle)
+	header := m.header(title, subtitle)
 
 	labels := []string{"URL", "Benutzer", "Passwort", "Datei-Tag"}
 	rows := make([]string, 0, len(m.fields))
@@ -92,30 +150,36 @@ func (m *Model) startView() string {
 		marker := "  "
 		labelStyle := theme.Muted
 		if index == m.focus {
-			marker = theme.Accent.Render("▸ ")
-			labelStyle = theme.Label
+			marker = theme.Cursor.Render("▸ ")
+			labelStyle = theme.Accent.Bold(true)
 		}
-		row := marker + labelStyle.Render(fmt.Sprintf("%-10s", labels[index])) + " " + field.View()
+		row := marker + labelStyle.Render(padRight(labels[index], 12)) + " " + field.View()
 		rows = append(rows, row)
 	}
-
-	action := "starten"
-	if m.cfg.URL == "" && len(m.library) > 0 {
-		action = "speichern"
+	if m.showsThemeField() {
+		marker := "  "
+		labelStyle := theme.Muted
+		if m.focus == m.themeFieldIndex() {
+			marker = theme.Cursor.Render("▸ ")
+			labelStyle = theme.Accent.Bold(true)
+		}
+		rows = append(rows, marker+labelStyle.Render(padRight("Erscheinungsbild", 16))+" "+theme.Badge.Render(themeLabel(themeMode)))
 	}
-	footer := renderFooter(width, []keyHint{
-		{Key: "tab", Label: "Feld"},
-		{Key: "enter", Label: action},
-		{Key: "esc", Label: "zurück"},
-		{Key: "ctrl+c", Label: "beenden"},
-	})
+	rows = append(rows, "")
+	rows = append(rows, theme.Muted.Render(hint))
+
+	hints := m.hints().short
+	if m.showsThemeField() {
+		hints = append(hints, keyHint{Key: "h/d/t", Label: "Erscheinungsbild"})
+	}
+	footer := m.footerWithToast(width, append(hints, keyHint{Key: "?", Label: "Hilfe"}))
 
 	var errorLines []string
 	if m.startErr != nil {
-		errorLines = wrapText(m.startErr.Error(), max(1, width-2))
+		errorLines = wrapText(m.startErr.Error(), m.flowWidth(width))
 	}
 
-	panel := renderPanel(width, "Zugang", fitInner(rows, panelInner(width)), true)
+	panel := renderCard(width, cardTitle, fitInner(rows, m.cardTextWidth(width)), true, "")
 	body := panel
 	if m.height > 0 && len(header)+len(panel)+len(footer) > m.height {
 		// Very short terminals: drop the box so all four fields stay visible.
@@ -132,7 +196,7 @@ func (m *Model) startView() string {
 			available = m.height - len(header) - len(footer) - len(body) - 1
 		}
 		if available < 1 {
-			// The panel no longer fits beside the error: keep the four fields
+			// The card no longer fits beside the error: keep the four fields
 			// and the tail of the error instead of losing the cause.
 			plain := make([]string, 0, len(rows))
 			for _, row := range rows {
@@ -147,15 +211,19 @@ func (m *Model) startView() string {
 		if m.height <= 0 || m.height >= 18 {
 			body = append(body, "")
 		}
-		for _, line := range errorLines {
-			body = append(body, fitLine(theme.Danger.Render(line), width))
+		for index, line := range errorLines {
+			text := line
+			if index == 0 {
+				text = theme.Danger.Render("● ") + line
+			}
+			body = append(body, fitLine(theme.Danger.Render(text), width))
 		}
 	}
-	return m.renderFrame(header, body, footer)
+	return m.frameRows(header, body, footer)
 }
 
-func (m *Model) seriesView() string {
-	width := m.contentWidth()
+func (m *Model) seriesView() []string {
+	width := m.frameWidth()
 	heading := m.showName
 	if heading == "" {
 		heading = "Staffeln"
@@ -167,36 +235,26 @@ func (m *Model) seriesView() string {
 			selected++
 		}
 	}
-	header := renderHeader(width, heading, fmt.Sprintf("%d ausgewählt", selected))
+	header := m.header(heading, fmt.Sprintf("%d ausgewählt", selected))
 
 	panelTitle := "Staffeln"
 	if m.categoryMode {
 		panelTitle = "Kategorien"
 	}
-	footerHints := []keyHint{
-		{Key: "space", Label: "wählen"},
-		{Key: "a", Label: "alle/keine"},
-		{Key: "enter", Label: "starten"},
-		{Key: "?", Label: "Hilfe"},
-		{Key: "ctrl+c", Label: "beenden"},
-	}
-	if m.categoryMode {
-		footerHints[2] = keyHint{Key: "enter", Label: "übernehmen"}
-	}
-	footer := renderFooter(width, footerHints)
+	footer := m.screenFooter(width)
 
-	inner := panelInner(width)
-	budget := listBudget(m.height, header, footer, 0, width, panelTitle)
+	inner := m.cardTextWidth(width)
+	budget := listBudget(m.height, header, footer, 0, width)
 	budget = min(budget, m.seriesVisible())
 	// The hint about an empty selection needs a line of its own.
 	hintLines := 0
 	if m.selectionErr != "" {
-		hintLines = len(wrapText(m.selectionErr, inner))
+		hintLines = len(wrapText(m.selectionErr, m.flowWidth(width)))
 		budget = max(1, budget-hintLines)
 	}
 	var rows []string
 	if len(m.seasons) == 0 {
-		rows = clampLines(renderEmpty(inner, "Keine Staffeln verfügbar.", "Bitte später erneut prüfen."), budget)
+		rows = clampLines(renderEmptyAction(inner, "Keine Staffeln verfügbar.", "Bitte später erneut prüfen.", "esc", "zurück"), budget)
 	} else {
 		start, end, top, bottom := windowRange(len(m.seasons), m.cursor, m.seriesOffset, budget)
 		if top {
@@ -206,7 +264,7 @@ func (m *Model) seriesView() string {
 			season := m.seasons[index]
 			cursor := "  "
 			if index == m.cursor {
-				cursor = theme.Accent.Render("▸ ")
+				cursor = theme.Cursor.Render("▸ ")
 			}
 			box := "[ ]"
 			if m.selection[season.Number] {
@@ -227,35 +285,32 @@ func (m *Model) seriesView() string {
 	}
 	if m.selectionErr != "" {
 		rows = append(rows, "")
-		for _, line := range wrapText(m.selectionErr, inner) {
+		for _, line := range wrapText(m.selectionErr, m.flowWidth(width)) {
 			rows = append(rows, fitLine(theme.Danger.Render(line), inner))
 		}
 	}
-	panel := renderPanel(width, panelTitle, rows, true)
-	return m.renderFrame(header, panel, footer)
+	panel := renderCard(width, panelTitle, rows, true, "")
+	return m.frameRows(header, panel, footer)
 }
 
-func (m *Model) tatortView() string {
-	width := m.contentWidth()
+func (m *Model) tatortView() []string {
+	width := m.frameWidth()
 	title := truncate("Tatort "+m.tatortCity, max(8, width-2))
-	header := renderHeader(width, title, "Episoden überspringen")
-	footer := renderFooter(width, []keyHint{
-		{Key: "enter", Label: "starten"},
-		{Key: "ctrl+c", Label: "beenden"},
-	})
+	header := m.header(title, "Episoden überspringen")
+	footer := m.screenFooter(width)
 
-	inner := panelInner(width)
+	inner := m.cardTextWidth(width)
 	question := fmt.Sprintf("Wie viele Episoden überspringen? (0 bis %d, 0 = alle laden)", m.tatortCount)
-	questionLines := wrapText(question, inner)
+	questionLines := wrapText(question, m.flowWidth(width))
 	fieldLine := fitLine(m.skipField.View(), inner)
 
 	if m.skipErr == "" {
 		content := append(fitInner(questionLines, inner), "")
 		content = append(content, fieldLine)
-		return m.renderFrame(header, renderPanel(width, "Überspringen", content, true), footer)
+		return m.frameRows(header, renderCard(width, "Überspringen", content, true, ""), footer)
 	}
 
-	available := listBudget(m.height, header, footer, 0, width, "Überspringen")
+	available := listBudget(m.height, header, footer, 0, width)
 	// Trim the question until the field and at least one error line fit.
 	for len(questionLines) > 0 && len(questionLines)+2 > available {
 		questionLines = questionLines[:len(questionLines)-1]
@@ -274,33 +329,29 @@ func (m *Model) tatortView() string {
 	if blank {
 		content = append(content, "")
 	}
-	for _, line := range tailWithEllipsis(wrapText(m.skipErr, inner), errorBudget) {
+	for _, line := range tailWithEllipsis(wrapText(m.skipErr, m.flowWidth(width)), errorBudget) {
 		content = append(content, fitLine(theme.Danger.Render(line), inner))
 	}
-	return m.renderFrame(header, renderPanel(width, "Überspringen", content, true), footer)
+	return m.frameRows(header, renderCard(width, "Überspringen", content, true, ""), footer)
 }
 
-func (m *Model) summaryView() string {
-	width := m.contentWidth()
+func (m *Model) summaryView() []string {
+	width := m.frameWidth()
 	title := "Fertig"
 	if m.doneErr != nil || m.cancelled {
 		title = "Abgebrochen"
 	}
 	subtitle := "Zusammenfassung"
-	header := renderHeader(width, title, subtitle)
-	footer := renderFooter(width, []keyHint{
-		{Key: "l", Label: "Bibliothek"},
-		{Key: "q", Label: "beenden"},
-		{Key: "enter", Label: "beenden"},
-	})
+	header := m.header(title, subtitle)
+	footer := m.screenFooter(width)
 
-	inner := panelInner(width)
+	inner := m.cardTextWidth(width)
 	symbol := theme.Success.Render("✓")
 	message := []string{"Alle Downloads abgeschlossen."}
 	messageStyle := theme.Success
 	if m.doneErr != nil {
 		symbol = theme.Danger.Render("!")
-		message = wrapText(m.doneErr.Error(), inner)
+		message = wrapText(m.doneErr.Error(), m.flowWidth(width))
 		messageStyle = theme.Danger
 	}
 
@@ -320,7 +371,7 @@ func (m *Model) summaryView() string {
 
 	available := 1 << 30
 	if m.height > 0 {
-		available = m.height - len(header) - len(footer) - panelOverhead(width, "Ergebnis")
+		available = m.height - len(header) - len(footer) - cardOverhead(width)
 	}
 	if available < 1 {
 		available = 1
@@ -342,8 +393,8 @@ func (m *Model) summaryView() string {
 	for _, line := range counters {
 		rows = append(rows, fitLine(line, inner))
 	}
-	panel := renderPanel(width, "Ergebnis", rows, true)
-	return m.renderFrame(header, panel, footer)
+	panel := renderCard(width, "Ergebnis", rows, true, "")
+	return m.frameRows(header, panel, footer)
 }
 
 func styleLines(lines []string, style interface{ Render(...string) string }) []string {
@@ -358,9 +409,20 @@ func (m *Model) appendDetailMessage(lines []string, headerLen, footerLen, width 
 	if m.detailMessage == "" {
 		return lines
 	}
-	message := styleLines(wrapText(m.detailMessage, max(1, panelInner(width))), theme.Muted)
+	style := theme.Muted
+	marker := theme.Accent.Render("●")
 	if dangerText(m.detailMessage) {
-		message = styleLines(wrapText(m.detailMessage, max(1, panelInner(width))), theme.Danger)
+		style = theme.Danger
+		marker = theme.Danger.Render("●")
+	}
+	wrapped := wrapText(m.detailMessage, max(1, m.flowWidth(width)-2))
+	message := make([]string, 0, len(wrapped))
+	for index, line := range wrapped {
+		if index == 0 {
+			message = append(message, marker+" "+style.Render(line))
+			continue
+		}
+		message = append(message, style.Render(line))
 	}
 	if m.height > 0 {
 		budget := m.height - headerLen - footerLen - len(lines) - 1

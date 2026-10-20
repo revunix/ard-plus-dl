@@ -38,12 +38,15 @@ func fitToWidth(value string, width int) string {
 }
 
 // renderHeader returns the brand/title line with a right-aligned status chip
-// and a gradient rule.
-func renderHeader(width int, title, subtitle string) []string {
+// and a rule below it. The status shows what the app is doing right now.
+func renderHeader(width int, title, subtitle, status string) []string {
 	if width <= 0 {
 		return []string{"", ""}
 	}
 	head := gradientText("ard-plus-dl") + theme.Muted.Render(" › ") + theme.Title.Render(title)
+	if status != "" {
+		head += "  " + theme.Accent.Render(fitToWidth(status, 48))
+	}
 
 	line := head
 	if subtitle != "" {
@@ -59,18 +62,12 @@ func renderHeader(width int, title, subtitle string) []string {
 	return []string{fitToWidth(line, width), renderRule(width)}
 }
 
-// renderRule returns a gradient horizontal line of exactly width cells.
+// renderRule returns a horizontal rule of exactly width cells.
 func renderRule(width int) string {
 	if width <= 0 {
 		return ""
 	}
-	start, end := adaptiveHex(colorAccent), adaptiveHex(colorBorder)
-	var builder strings.Builder
-	for index := 0; index < width; index++ {
-		color := interpolateHex(start, end, index, width)
-		builder.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render("─"))
-	}
-	return builder.String()
+	return theme.Accent.Render(strings.Repeat("─", width))
 }
 
 // gradientText colors text with an RGB gradient from teal to violet. Runes are
@@ -92,18 +89,10 @@ func gradientText(text string) string {
 // gradientEndpoints picks palette entries that stay legible on the terminal
 // background.
 func gradientEndpoints() (string, string) {
-	if lipgloss.HasDarkBackground() {
+	if isDark() {
 		return colorGradientStartDark, colorGradientEndDark
 	}
 	return colorGradientStartLight, colorGradientEndLight
-}
-
-// adaptiveHex resolves an adaptive color for the active background.
-func adaptiveHex(color lipgloss.AdaptiveColor) string {
-	if lipgloss.HasDarkBackground() {
-		return color.Dark
-	}
-	return color.Light
 }
 
 // interpolateHex mixes two hex colors; index runs from 0 to count-1.
@@ -132,7 +121,8 @@ func formatHexColor(red, green, blue int) string {
 	return fmt.Sprintf("#%02X%02X%02X", red, green, blue)
 }
 
-// renderFooter renders key hints and wraps them onto at most two lines.
+// renderFooter renders key hints as keycaps and wraps them onto at most two
+// lines.
 func renderFooter(width int, hints []keyHint) []string {
 	if width <= 0 {
 		return []string{""}
@@ -140,7 +130,7 @@ func renderFooter(width int, hints []keyHint) []string {
 	const gap = "   "
 	rendered := make([]string, 0, len(hints))
 	for _, hint := range hints {
-		rendered = append(rendered, theme.Key.Render(hint.Key)+" "+theme.KeyLabel.Render(hint.Label))
+		rendered = append(rendered, renderKeycap(hint.Key)+" "+theme.KeyLabel.Render(hint.Label))
 	}
 	if len(rendered) == 0 {
 		return []string{""}
@@ -159,10 +149,76 @@ func renderFooter(width int, hints []keyHint) []string {
 	return []string{fitToWidth(current, width)}
 }
 
-// renderPanel draws lines inside a rounded border. The title sits in the top
-// border; focused switches the border to the accent color.
-func renderPanel(width int, title string, lines []string, focused bool) []string {
-	if width <= 0 || width < 24 {
+// renderPopup draws a box with the given lines and returns the rows of a
+// window that floats over the page. The window is centered.
+func renderPopup(width int, title string, lines []string) []string {
+	inner := width
+	for _, line := range lines {
+		if size := ansi.StringWidth(line) + 4; size > inner {
+			inner = size
+		}
+	}
+	inner = min(inner, max(20, width-4))
+
+	rows := []string{theme.Muted.Render("  " + title)}
+	rows = append(rows, "")
+	for _, line := range lines {
+		rows = append(rows, "  "+fitToWidth(line, inner-4))
+	}
+	rows = append(rows, "")
+	rows = append(rows, theme.Muted.Render("  esc schließen"))
+
+	box := inner + 2
+	offset := max(0, (width-box)/2)
+
+	out := make([]string, 0, len(rows)+2)
+	out = append(out, strings.Repeat(" ", offset)+theme.Accent.Render("╭"+strings.Repeat("─", inner)+"╮"))
+	for _, row := range rows {
+		filled := fitToWidth(row, inner-2)
+		padding := inner - 2 - ansi.StringWidth(filled)
+		if padding < 0 {
+			padding = 0
+		}
+		line := theme.Accent.Render("│") + theme.Popup.Render(" "+filled+strings.Repeat(" ", padding)+" ") + theme.Accent.Render("│")
+		out = append(out, strings.Repeat(" ", offset)+line)
+	}
+	out = append(out, strings.Repeat(" ", offset)+theme.Accent.Render("╰"+strings.Repeat("─", inner)+"╯"))
+	return out
+}
+
+// overlay places a window in the middle of the rendered page.
+func overlay(lines, window []string) []string {
+	if len(window) == 0 {
+		return lines
+	}
+	page := make([]string, len(lines))
+	copy(page, lines)
+	top := max(0, (len(page)-len(window))/2-1)
+	for index, row := range window {
+		position := top + index
+		if position < 0 || position >= len(page) {
+			continue
+		}
+		page[position] = row
+	}
+	return page
+}
+
+// renderKeycap renders a shortcut as a small chip.
+func renderKeycap(key string) string {
+	return theme.Keycap.Render(key)
+}
+
+// renderCard draws a flat card: a title row with an optional right aligned
+// meta value, a rule underneath and the indented content. Cards replace the
+// old framed panels, so the content uses the full width and the screen reads
+// as a flat surface instead of a stack of boxes.
+func renderCard(width int, title string, lines []string, focused bool, meta string) []string {
+	if width <= 0 {
+		return nil
+	}
+	if width < minCardWidth {
+		// Too narrow for a card: keep the content only.
 		out := make([]string, len(lines))
 		for index, line := range lines {
 			out[index] = fitToWidth(line, width)
@@ -170,38 +226,46 @@ func renderPanel(width int, title string, lines []string, focused bool) []string
 		return out
 	}
 
-	borderColor := colorBorder
-	if focused {
-		borderColor = colorAccent
-	}
-	border := lipgloss.NewStyle().Foreground(borderColor)
-	inner := width - 4 // border (2) and horizontal padding (2)
-
-	var top string
-	if title != "" {
-		label := fitToWidth(title, width-7) // "╭─ ● " and the closing " ╮"
-		titlePart := theme.Accent.Render("●") + " " + theme.PanelTitle.Render(label)
-		fill := width - 5 - ansi.StringWidth(titlePart)
-		if fill < 0 {
-			fill = 0
-		}
-		top = border.Render("╭─ ") + titlePart + border.Render(" "+strings.Repeat("─", fill)+"╮")
-	} else {
-		top = border.Render("╭" + strings.Repeat("─", width-2) + "╮")
-	}
-
 	out := make([]string, 0, len(lines)+2)
-	out = append(out, top)
+	out = append(out, fitToWidth(cardTitleLine(width, title, meta, focused), width))
+	out = append(out, theme.Divider.Render(strings.Repeat("─", width)))
 	for _, line := range lines {
-		fitted := fitToWidth(line, inner)
-		padding := inner - ansi.StringWidth(fitted)
-		if padding < 0 {
-			padding = 0
-		}
-		out = append(out, border.Render("│")+" "+fitted+strings.Repeat(" ", padding)+" "+border.Render("│"))
+		out = append(out, fitToWidth("  "+line, width))
 	}
-	out = append(out, border.Render("╰"+strings.Repeat("─", width-2)+"╯"))
 	return out
+}
+
+// cardTitleLine renders the title row of a card with the meta value aligned
+// to the right.
+func cardTitleLine(width int, title, meta string, focused bool) string {
+	style := theme.CardTitle
+	if !focused {
+		style = theme.Muted.Bold(true)
+	}
+	head := theme.Accent.Render("▍") + " " + style.Render(title)
+	if meta == "" {
+		return head
+	}
+	metaWidth := ansi.StringWidth(meta)
+	if width-ansi.StringWidth(head)-metaWidth < 1 {
+		return head
+	}
+	return head + strings.Repeat(" ", width-ansi.StringWidth(head)-metaWidth) + theme.Muted.Render(meta)
+}
+
+// renderNotice renders a status line below a card. Errors keep the danger
+// color, everything else stays muted.
+func renderNotice(message string) string {
+	if message == "" {
+		return ""
+	}
+	style := theme.Muted
+	marker := theme.Accent.Render("●")
+	if dangerText(message) {
+		style = theme.Danger
+		marker = theme.Danger.Render("●")
+	}
+	return marker + " " + style.Render(message)
 }
 
 // renderPill applies the matching pill style plus a shape cue, so the kind is
@@ -242,7 +306,7 @@ func progressBar(done, total, width int) string {
 	if filled > width {
 		filled = width
 	}
-	start, end := adaptiveHex(colorAccent), adaptiveHex(colorSuccess)
+	start, end := themeHex(colorAccent), themeHex(colorSuccess)
 	var builder strings.Builder
 	for index := 0; index < filled; index++ {
 		color := interpolateHex(start, end, index, filled)
@@ -280,6 +344,39 @@ func renderEmpty(width int, title, hint string) []string {
 	return lines
 }
 
+// renderEmptyAction centers a symbol, title, hint and the key that leads
+// out of the empty state.
+func renderEmptyAction(width int, title, hint, key, action string) []string {
+	if width <= 0 {
+		return []string{"", ""}
+	}
+	lines := renderEmpty(width, title, hint)
+	if key == "" {
+		return lines
+	}
+	prompt := renderKeycap(key) + " " + theme.KeyLabel.Render(action)
+	return append(lines, fitToWidth(centerLine(prompt, width), width))
+}
+
+// renderSkeleton draws placeholder rows for content that is still loading.
+func renderSkeleton(width, rows int) []string {
+	if rows <= 0 || width <= 0 {
+		return nil
+	}
+	lines := make([]string, 0, rows)
+	for index := range rows {
+		length := width - 6
+		if index == rows-1 && length > 8 {
+			length = length / 2
+		}
+		if length < 4 {
+			length = 4
+		}
+		lines = append(lines, theme.Muted.Render("  "+strings.Repeat("░", length)))
+	}
+	return lines
+}
+
 // renderStat renders a bold value followed by its muted label.
 func renderStat(label, value string) string {
 	return theme.Accent.Bold(true).Render(value) + " " + theme.Muted.Render(label)
@@ -299,7 +396,7 @@ func centerLine(text string, width int) string {
 	return strings.Repeat(" ", left) + text + strings.Repeat(" ", right)
 }
 
-// renderSection renders an uppercase accent heading with a block marker.
+// renderSection renders an uppercase accent heading with a small marker.
 func renderSection(title string) string {
-	return theme.Accent.Bold(true).Render("▍ " + strings.ToUpper(title))
+	return theme.Accent.Bold(true).Render("· " + strings.ToUpper(title))
 }

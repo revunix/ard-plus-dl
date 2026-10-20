@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/revunix/ard-plus-dl/internal/app"
+import (
+	"time"
+
+	"github.com/revunix/ard-plus-dl/internal/app"
+)
 
 // applyEvent folds one app event into the queue and the log.
 func (m *Model) applyEvent(event app.Event) {
@@ -8,13 +12,34 @@ func (m *Model) applyEvent(event app.Event) {
 	case app.EventLog:
 		m.appendLog(event.Message)
 	case app.EventQueued:
-		m.jobs = append(m.jobs, job{label: event.Label, path: event.Path, status: "wartet"})
+		m.jobs = append(m.jobs, job{
+			label:     event.Label,
+			path:      event.Path,
+			status:    "wartet",
+			startedAt: time.Now(),
+			episodeID: event.EpisodeID,
+			seriesID:  m.downloadSeriesID,
+		})
 	case app.EventProgress:
 		if index := m.jobIndex(event.Label); index >= 0 && !terminalJobStatus(m.jobs[index].status) {
 			current := &m.jobs[index]
+			now := time.Now()
+			// The time per segment of the last update is the best guess for
+			// the speed of the download.
+			if !current.updatedAt.IsZero() && event.Done > current.lastDone {
+				elapsed := now.Sub(current.updatedAt)
+				if elapsed > 0 {
+					current.perSegment = elapsed / time.Duration(event.Done-current.lastDone)
+				}
+			}
 			current.done = event.Done
 			current.total = event.Total
 			current.status = "lädt"
+			current.updatedAt = now
+			current.lastDone = event.Done
+			if event.EpisodeID != "" {
+				current.episodeID = event.EpisodeID
+			}
 		}
 	case app.EventDone:
 		if index := m.jobIndex(event.Label); index >= 0 && !terminalJobStatus(m.jobs[index].status) {
@@ -22,6 +47,9 @@ func (m *Model) applyEvent(event app.Event) {
 			current.status = "fertig"
 			if event.Path != "" {
 				current.path = event.Path
+			}
+			if event.EpisodeID != "" {
+				current.episodeID = event.EpisodeID
 			}
 		}
 	case app.EventFailed:
@@ -55,7 +83,7 @@ func (m *Model) jobIndex(label string) int {
 
 // terminalJobStatus reports whether a job has already reached a final state.
 func terminalJobStatus(status string) bool {
-	return status == "fertig" || status == "fehlgeschlagen"
+	return status == "fertig" || status == "fehlgeschlagen" || status == "gelöscht"
 }
 
 func (m *Model) appendLog(line string) {

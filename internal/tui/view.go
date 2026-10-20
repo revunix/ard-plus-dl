@@ -8,15 +8,35 @@ import (
 
 const maxContentWidth = 120
 
+// minCardWidth is the smallest width that still carries a card title and rule.
+const minCardWidth = 24
+
+// minSplitWidth is the smallest width that carries two columns side by side.
+const minSplitWidth = 92
+
+// columnGap is the number of empty cells between two columns.
+const columnGap = 2
+
 // View renders the current screen.
 func (m *Model) View() string {
-	if m.helpVisible {
-		return m.helpView()
-	}
 	if m.width > 0 && (m.width < 40 || (m.height > 0 && m.height < 12)) {
 		return fitLine(centerLine("Terminal zu klein (mindestens 40x12).", m.width), m.width)
 	}
+	page := m.pageView()
+	if m.helpVisible {
+		// The help floats over the page instead of replacing it.
+		page = overlay(page, m.helpPopup())
+	}
+	return strings.Join(page, "\n")
+}
+
+// pageView renders the screen without the help popup.
+func (m *Model) pageView() []string {
 	switch m.screen {
+	case ScreenSplash:
+		return m.splashView()
+	case ScreenEditEntry:
+		return m.editEntryView()
 	case ScreenStart:
 		return m.startView()
 	case ScreenSeries:
@@ -34,70 +54,121 @@ func (m *Model) View() string {
 	case ScreenSeasonEpisodes:
 		return m.seasonEpisodesView()
 	}
-	return ""
+	return nil
 }
 
-// contentWidth keeps the layout readable on very wide terminals.
-func (m *Model) contentWidth() int {
-	if m.width > 0 && m.width < maxContentWidth {
-		return m.width
-	}
-	return maxContentWidth
-}
-
-// frameLines fits every line to the content width and clips the height.
-func (m *Model) frameLines(lines []string) string {
-	width := m.contentWidth()
-	fitted := make([]string, 0, len(lines))
+// paintRows fits every line to the terminal width and paints the surface
+// color of the color scheme behind it.
+func (m *Model) paintRows(lines []string) []string {
+	width := m.frameWidth()
+	background := backgroundSequence()
+	painted := make([]string, 0, len(lines))
 	for _, line := range lines {
-		fitted = append(fitted, fitLine(line, width))
+		line = fitLine(line, width)
+		if background != "" {
+			padding := width - ansi.StringWidth(line)
+			if padding > 0 {
+				line += strings.Repeat(" ", padding)
+			}
+			line = withBackground(line, background)
+		}
+		painted = append(painted, line)
 	}
-	if m.height > 0 && len(fitted) > m.height {
-		fitted = fitted[:m.height]
+	if m.height > 0 && len(painted) > m.height {
+		painted = painted[:m.height]
 	}
-	return strings.Join(fitted, "\n")
+	return painted
 }
 
-// renderFrame joins header, body and footer and keeps the footer visible when
-// the terminal is too short for everything.
-func (m *Model) renderFrame(header, body, footer []string) string {
+// frameLines fits every line to the terminal width and clips the height. When
+// a color scheme is chosen by hand, the lines also carry the surface color
+// of that scheme.
+func (m *Model) frameLines(lines []string) string {
+	return strings.Join(m.paintRows(lines), "\n")
+}
+
+// withBackground puts the surface color behind a rendered line. Every reset
+// inside the line starts the surface color again.
+func withBackground(line, background string) string {
+	if background == "" {
+		return line
+	}
+	return strings.ReplaceAll(background+line, "\x1b[0m", "\x1b[0m"+background)
+}
+
+// frameRows joins header, body and footer into the rows of the screen. The
+// body is trimmed so that the footer stays visible and filled up so that the
+// footer always sits at the bottom of the terminal. Every row carries the
+// surface color of the color scheme.
+func (m *Model) frameRows(header, body, footer []string) []string {
 	if m.height > 0 {
-		overflow := len(header) + len(body) + len(footer) - m.height
-		if overflow > 0 {
-			if overflow >= len(body) {
-				body = nil
-			} else {
-				body = body[:len(body)-overflow]
-			}
+		available := m.height - len(header) - len(footer)
+		if available < 0 {
+			available = 0
+		}
+		if len(body) > available {
+			body = body[:available]
+		}
+		for len(body) < available {
+			body = append(body, "")
 		}
 	}
 	lines := make([]string, 0, len(header)+len(body)+len(footer))
 	lines = append(lines, header...)
 	lines = append(lines, body...)
 	lines = append(lines, footer...)
-	return m.frameLines(lines)
+	return m.paintRows(lines)
 }
 
-// panelInner is the content width inside a bordered panel. The two cells of
-// slack cover the optional panel padding.
-func panelInner(width int) int {
-	return max(1, width-4)
+// renderFrame joins header, body and footer into the rendered screen.
+func (m *Model) renderFrame(header, body, footer []string) string {
+	return strings.Join(m.frameRows(header, body, footer), "\n")
 }
 
-func panelOverhead(width int, title string) int {
-	return len(renderPanel(width, title, nil, false))
+// cardInner is the content width inside a card. The two cells of slack cover
+// the card indent.
+func cardInner(width int) int {
+	return max(1, width-2)
+}
+
+// cardOverhead returns the rows a card spends on its title row and its rule.
+func cardOverhead(width int) int {
+	if width < minCardWidth {
+		return 0
+	}
+	return 2
 }
 
 // listBudget returns the number of list rows that fit next to the fixed chrome.
-func listBudget(height int, header, footer []string, extra int, width int, panelTitle string) int {
+func listBudget(height int, header, footer []string, extra int, width int) int {
 	if height <= 0 {
 		return 1 << 30
 	}
-	available := height - len(header) - len(footer) - extra - panelOverhead(width, panelTitle)
+	available := height - len(header) - len(footer) - extra - cardOverhead(width)
 	return max(0, available)
 }
 
-// clampLines keeps at most budget rows, so a panel never grows past its slot.
+// splitWidths splits the width into two columns. The first column gets the
+// given share of the free space.
+func splitWidths(width int, share float64) (int, int) {
+	free := width - columnGap
+	if free < 20 {
+		return width, 0
+	}
+	left := int(float64(free) * share)
+	left = min(max(left, 20), free-20)
+	return left, free - left
+}
+
+// splitColumns renders two blocks of lines next to each other.
+func splitColumns(left, right []string, leftWidth, rightWidth int) []string {
+	if rightWidth <= 0 {
+		return left
+	}
+	return strings.Split(joinColumns(left, right, leftWidth, rightWidth), "\n")
+}
+
+// clampLines keeps at most budget rows, so a card never grows past its slot.
 func clampLines(lines []string, budget int) []string {
 	if budget < 0 {
 		budget = 0
@@ -286,4 +357,12 @@ func episodeWord(count int) string {
 		return "Folge"
 	}
 	return "Folgen"
+}
+
+// entryWord names a number of library entries.
+func entryWord(count int) string {
+	if count == 1 {
+		return "Eintrag"
+	}
+	return "Einträge"
 }

@@ -24,7 +24,7 @@ func TestComponentsHeader(t *testing.T) {
 	defer lipgloss.SetColorProfile(profile)
 
 	for _, width := range []int{40, 120} {
-		lines := renderHeader(width, "Bibliothek", "42 Serien")
+		lines := renderHeader(width, "Bibliothek", "42 Serien", "")
 		if len(lines) != 2 {
 			t.Fatalf("width %d: got %d lines, want 2", width, len(lines))
 		}
@@ -39,7 +39,7 @@ func TestComponentsHeader(t *testing.T) {
 			t.Fatalf("width %d: header brand is not rendered with a true-color gradient", width)
 		}
 
-		bare := renderHeader(width, "Bibliothek", "")
+		bare := renderHeader(width, "Bibliothek", "", "")
 		if len(bare) != 2 {
 			t.Fatalf("width %d: got %d lines without subtitle, want 2", width, len(bare))
 		}
@@ -131,7 +131,7 @@ func TestComponentsFooter(t *testing.T) {
 	}
 }
 
-func TestComponentsPanel(t *testing.T) {
+func TestComponentsCard(t *testing.T) {
 	profile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(profile)
@@ -139,46 +139,74 @@ func TestComponentsPanel(t *testing.T) {
 	const width = 40
 	lines := []string{"Zeile eins", "Zeile zwei"}
 
-	titled := renderPanel(width, "Staffeln", lines, false)
-	if got, want := len(titled), len(lines)+2; got != want {
-		t.Fatalf("titled panel has %d lines, want %d", got, want)
+	card := renderCard(width, "Staffeln", lines, true, "")
+	if got, want := len(card), len(lines)+2; got != want {
+		t.Fatalf("card has %d lines, want %d", got, want)
 	}
-	assertMaxWidth(t, "titled panel", titled, width)
-	top := ansi.Strip(titled[0])
-	if !strings.Contains(top, "Staffeln") {
-		t.Fatalf("title is not embedded in the top border: %q", top)
+	assertMaxWidth(t, "card", card, width)
+	title := ansi.Strip(card[0])
+	if !strings.Contains(title, "Staffeln") {
+		t.Fatalf("title row misses the title: %q", title)
 	}
-	if !strings.Contains(top, "●") || !strings.Contains(top, "╭") || !strings.Contains(top, "╮") {
-		t.Fatalf("top border %q misses marker or corners", top)
+	if got, want := ansi.Strip(card[1]), strings.Repeat("─", width); got != want {
+		t.Fatalf("card rule %q, want %q", got, want)
 	}
-	if inner := ansi.Strip(strings.Join(titled[1:len(titled)-1], "\n")); strings.Contains(inner, "Staffeln") {
-		t.Fatalf("title should not be an inner line: %q", inner)
+	if !strings.HasPrefix(ansi.Strip(card[2]), "  Zeile eins") {
+		t.Fatalf("card content is not indented: %q", ansi.Strip(card[2]))
 	}
-
-	plain := renderPanel(width, "", lines, true)
-	if got, want := len(plain), len(lines)+2; got != want {
-		t.Fatalf("plain panel has %d lines, want %d", got, want)
-	}
-	assertMaxWidth(t, "plain panel", plain, width)
-	if strings.Contains(ansi.Strip(strings.Join(plain, "\n")), "Staffeln") {
-		t.Fatal("plain panel should not contain a title")
-	}
-	if strings.Join(plain, "\n") == strings.Join(renderPanel(width, "", lines, false), "\n") {
-		t.Fatal("focused panel should differ from unfocused panel")
-	}
-	focusedTitle := renderPanel(width, "Staffeln", lines, true)
-	if strings.Join(focusedTitle, "\n") == strings.Join(titled, "\n") {
-		t.Fatal("focused title panel should differ from unfocused title panel")
+	if inner := ansi.Strip(strings.Join(card[1:], "\n")); strings.Contains(inner, "Staffeln") {
+		t.Fatalf("title should not repeat inside the card: %q", inner)
 	}
 
-	narrow := renderPanel(12, "Titel", lines, false)
+	withMeta := renderCard(width, "Serien", lines, true, "3 Einträge")
+	if !strings.Contains(ansi.Strip(withMeta[0]), "3 Einträge") {
+		t.Fatalf("card title row misses the meta value: %q", ansi.Strip(withMeta[0]))
+	}
+	if got := lipgloss.Width(withMeta[0]); got != width {
+		t.Fatalf("card title row is %d cells, want %d", got, width)
+	}
+
+	unfocused := renderCard(width, "Staffeln", lines, false, "")
+	if strings.Join(unfocused, "\n") == strings.Join(card, "\n") {
+		t.Fatal("unfocused card should differ from the focused card")
+	}
+
+	narrow := renderCard(12, "Titel", lines, false, "")
 	if len(narrow) != len(lines) {
-		t.Fatalf("narrow panel returned %d lines, want %d", len(narrow), len(lines))
+		t.Fatalf("narrow card returned %d lines, want %d", len(narrow), len(lines))
 	}
-	assertMaxWidth(t, "narrow panel", narrow, 12)
+	assertMaxWidth(t, "narrow card", narrow, 12)
 
-	longTitle := renderPanel(24, "Eine sehr lange Panelüberschrift", lines, true)
-	assertMaxWidth(t, "long title panel", longTitle, 24)
+	longTitle := renderCard(24, "Eine sehr lange Kartenüberschrift", lines, true, "")
+	assertMaxWidth(t, "long title card", longTitle, 24)
+}
+
+func TestComponentsKeycapAndNotice(t *testing.T) {
+	profile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(profile)
+
+	keycap := renderKeycap("enter")
+	if !strings.Contains(ansi.Strip(keycap), "enter") {
+		t.Fatalf("keycap %q misses the key", ansi.Strip(keycap))
+	}
+	if !strings.Contains(keycap, "48;2;") {
+		t.Fatalf("keycap has no background: %q", keycap)
+	}
+	if got, want := ansi.StringWidth(keycap), len("enter")+2; got != want {
+		t.Fatalf("keycap width %d, want %d", got, want)
+	}
+
+	notice := renderNotice("Bibliothek aktualisiert.")
+	if !strings.Contains(ansi.Strip(notice), "Bibliothek aktualisiert.") {
+		t.Fatalf("notice %q misses the message", ansi.Strip(notice))
+	}
+	if !strings.Contains(notice, "38;2;") {
+		t.Fatalf("notice has no color: %q", notice)
+	}
+	if got := renderNotice(""); got != "" {
+		t.Fatalf("empty notice = %q, want empty", got)
+	}
 }
 
 func TestComponentsPillsAndBadge(t *testing.T) {
@@ -363,8 +391,8 @@ func TestThemeStyles(t *testing.T) {
 	if got, want := ansi.StringWidth(theme.PillDone.Render("Fertig")), 8; got != want {
 		t.Fatalf("pill width %d, want %d", got, want)
 	}
-	if got := ansi.Strip(renderSection("Downloads")); got != "▍ DOWNLOADS" {
-		t.Fatalf("section %q, want %q", got, "▍ DOWNLOADS")
+	if got := ansi.Strip(renderSection("Downloads")); got != "· DOWNLOADS" {
+		t.Fatalf("section %q, want %q", got, "· DOWNLOADS")
 	}
 	if got := ansi.Strip(renderStat("Fortschritt", "42%")); got != "42% Fortschritt" {
 		t.Fatalf("stat %q, want %q", got, "42% Fortschritt")
@@ -373,10 +401,11 @@ func TestThemeStyles(t *testing.T) {
 		"Title": theme.Title, "Subtitle": theme.Subtitle, "Muted": theme.Muted,
 		"Text": theme.Text, "Accent": theme.Accent, "Label": theme.Label,
 		"Success": theme.Success, "Warning": theme.Warning, "Danger": theme.Danger,
-		"Info": theme.Info, "Selected": theme.Selected, "PanelTitle": theme.PanelTitle,
+		"Info": theme.Info, "Selected": theme.Selected, "CardTitle": theme.CardTitle,
 		"InputPrompt": theme.InputPrompt, "InputText": theme.InputText,
 		"InputPlaceholder": theme.InputPlaceholder, "InputCursor": theme.InputCursor,
-		"Key": theme.Key, "KeyLabel": theme.KeyLabel, "Divider": theme.Divider,
+		"KeyLabel": theme.KeyLabel, "Divider": theme.Divider,
+		"Keycap": theme.Keycap, "Cursor": theme.Cursor,
 	} {
 		if strings.TrimSpace(ansi.Strip(style.Render("x"))) != "x" {
 			t.Fatalf("style %s did not render its content", name)

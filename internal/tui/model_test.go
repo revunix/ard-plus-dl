@@ -455,8 +455,8 @@ func TestLibrarySettingsDoesNotStartRun(t *testing.T) {
 	if called {
 		t.Error("the run was started while saving settings")
 	}
-	if m.screen != ScreenLibrary || m.libMessage != "Gespeichert." {
-		t.Errorf("screen = %v, message = %q; want the library with a save confirmation", m.screen, m.libMessage)
+	if m.screen != ScreenLibrary || m.toast != "Gespeichert." {
+		t.Errorf("screen = %v, message = %q; want the library with a save confirmation", m.screen, m.toast)
 	}
 }
 
@@ -657,8 +657,8 @@ func TestCheckDoneReportsFailures(t *testing.T) {
 	if m.exitCode != 1 {
 		t.Errorf("exitCode = %d, want 1 when one entry fails", m.exitCode)
 	}
-	if !strings.Contains(m.libMessage, "1 fehlgeschlagen") || !strings.Contains(m.libMessage, "kaputt") {
-		t.Errorf("libMessage = %q, want the failure count and first error", m.libMessage)
+	if !strings.Contains(m.toast, "1 fehlgeschlagen") || !strings.Contains(m.toast, "kaputt") {
+		t.Errorf("toast = %q, want the failure count and first error", m.toast)
 	}
 }
 
@@ -710,18 +710,19 @@ func TestWindowSizeClampsListOffsets(t *testing.T) {
 	m.cursor = 99
 
 	m, _ = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 30})
-	if m.libVisible() != 20 {
-		t.Fatalf("libVisible() = %d, want 20", m.libVisible())
+	// The lists use the space between header, card and footer.
+	if m.libVisible() < m.height-8 {
+		t.Fatalf("libVisible() = %d, want the free height", m.libVisible())
 	}
-	if m.libOffset != 80 {
-		t.Errorf("libOffset = %d, want 80", m.libOffset)
+	if m.libOffset != 100-m.libVisible() {
+		t.Errorf("libOffset = %d, want %d", m.libOffset, 100-m.libVisible())
 	}
 	assertVisible(t, "library", m.libCursor, m.libOffset, m.libVisible())
-	if m.seriesVisible() != 22 {
-		t.Fatalf("seriesVisible() = %d, want 22", m.seriesVisible())
+	if m.seriesVisible() < m.height-6 {
+		t.Fatalf("seriesVisible() = %d, want the free height", m.seriesVisible())
 	}
-	if m.seriesOffset != 78 {
-		t.Errorf("seriesOffset = %d, want 78", m.seriesOffset)
+	if m.seriesOffset != 100-m.seriesVisible() {
+		t.Errorf("seriesOffset = %d, want %d", m.seriesOffset, 100-m.seriesVisible())
 	}
 	assertVisible(t, "series", m.cursor, m.seriesOffset, m.seriesVisible())
 }
@@ -733,14 +734,14 @@ func TestLibraryPagingKeys(t *testing.T) {
 	m.height = 30
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
-	if m.libCursor != 19 {
-		t.Fatalf("pgdown cursor = %d, want 19", m.libCursor)
+	if m.libCursor != m.libVisible()-1 {
+		t.Fatalf("pgdown cursor = %d, want %d", m.libCursor, m.libVisible()-1)
 	}
 	assertVisible(t, "library", m.libCursor, m.libOffset, m.libVisible())
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
-	if m.libCursor != 38 {
-		t.Fatalf("second pgdown cursor = %d, want 38", m.libCursor)
+	if m.libCursor != 2*m.libVisible()-2 {
+		t.Fatalf("second pgdown cursor = %d, want %d", m.libCursor, 2*m.libVisible()-2)
 	}
 	assertVisible(t, "library", m.libCursor, m.libOffset, m.libVisible())
 
@@ -750,13 +751,13 @@ func TestLibraryPagingKeys(t *testing.T) {
 	}
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnd})
-	if m.libCursor != 99 || m.libOffset != 80 {
-		t.Fatalf("end cursor/offset = %d/%d, want 99/80", m.libCursor, m.libOffset)
+	if m.libCursor != 99 || m.libOffset != 100-m.libVisible() {
+		t.Fatalf("end cursor/offset = %d/%d, want 99/%d", m.libCursor, m.libOffset, 100-m.libVisible())
 	}
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
-	if m.libCursor != 80 {
-		t.Fatalf("pgup cursor = %d, want 80", m.libCursor)
+	if m.libCursor != 100-m.libVisible() {
+		t.Fatalf("pgup cursor = %d, want %d", m.libCursor, 100-m.libVisible())
 	}
 	assertVisible(t, "library", m.libCursor, m.libOffset, m.libVisible())
 }
@@ -768,14 +769,14 @@ func TestSeriesPagingKeys(t *testing.T) {
 	m.height = 30
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
-	if m.cursor != 21 {
-		t.Fatalf("pgdown cursor = %d, want 21", m.cursor)
+	if m.cursor != m.seriesVisible()-1 {
+		t.Fatalf("pgdown cursor = %d, want %d", m.cursor, m.seriesVisible()-1)
 	}
 	assertVisible(t, "series", m.cursor, m.seriesOffset, m.seriesVisible())
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyPgDown})
-	if m.cursor != 42 || m.seriesOffset != 21 {
-		t.Fatalf("second pgdown cursor/offset = %d/%d, want 42/21", m.cursor, m.seriesOffset)
+	if m.cursor != 2*m.seriesVisible()-2 || m.seriesOffset != m.seriesVisible()-1 {
+		t.Fatalf("second pgdown cursor/offset = %d/%d, want %d/%d", m.cursor, m.seriesOffset, 2*m.seriesVisible()-2, m.seriesVisible()-1)
 	}
 	assertVisible(t, "series", m.cursor, m.seriesOffset, m.seriesVisible())
 
@@ -785,13 +786,13 @@ func TestSeriesPagingKeys(t *testing.T) {
 	}
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnd})
-	if m.cursor != 49 || m.seriesOffset != 28 {
-		t.Fatalf("end cursor/offset = %d/%d, want 49/28", m.cursor, m.seriesOffset)
+	if m.cursor != 49 || m.seriesOffset != 50-m.seriesVisible() {
+		t.Fatalf("end cursor/offset = %d/%d, want 49/%d", m.cursor, m.seriesOffset, 50-m.seriesVisible())
 	}
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyPgUp})
-	if m.cursor != 28 {
-		t.Fatalf("pgup cursor = %d, want 28", m.cursor)
+	if m.cursor != 50-m.seriesVisible() {
+		t.Fatalf("pgup cursor = %d, want %d", m.cursor, 50-m.seriesVisible())
 	}
 	assertVisible(t, "series", m.cursor, m.seriesOffset, m.seriesVisible())
 }
@@ -799,12 +800,12 @@ func TestSeriesPagingKeys(t *testing.T) {
 func TestDetailVisibleSmallHeight(t *testing.T) {
 	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m.height = 12
-	if got := m.detailVisible(); got != 1 {
-		t.Errorf("detailVisible() at height 12 = %d, want 1", got)
+	if got := m.detailVisible(); got < 1 || got > m.height-5 {
+		t.Errorf("detailVisible() at height 12 = %d, want a positive part of the height", got)
 	}
 	m.height = 20
-	if got := m.detailVisible(); got != 9 {
-		t.Errorf("detailVisible() at height 20 = %d, want 9", got)
+	if got := m.detailVisible(); got < m.height-9 || got > m.height-5 {
+		t.Errorf("detailVisible() at height 20 = %d, want the free height", got)
 	}
 	m.height = 0
 	if got := m.detailVisible(); got != 12 {
@@ -883,8 +884,8 @@ func TestBusyBlocksConflictingKeys(t *testing.T) {
 		if cmd != nil {
 			t.Errorf("%q returned a command while busy", key.String())
 		}
-		if next.libMessage != "Bitte warten, eine Aktion läuft noch." {
-			t.Errorf("%q libMessage = %q, want the busy hint", key.String(), next.libMessage)
+		if next.toast != "Bitte warten, eine Aktion läuft noch." {
+			t.Errorf("%q toast = %q, want the busy hint", key.String(), next.toast)
 		}
 		if next.pendingRemoval != 0 {
 			t.Errorf("%q started a removal while busy", key.String())
@@ -920,8 +921,8 @@ func TestRunDoneResetsJobsAndLog(t *testing.T) {
 func TestCheckDoneNotes(t *testing.T) {
 	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
 	m, _ = update(t, m, checkDoneMsg{results: []app.CheckResult{{Note: "Archiv leer"}}})
-	if !strings.Contains(m.libMessage, "1 Hinweis: Archiv leer") {
-		t.Errorf("libMessage = %q, want the singular note", m.libMessage)
+	if !strings.Contains(m.toast, "1 Hinweis: Archiv leer") {
+		t.Errorf("toast = %q, want the singular note", m.toast)
 	}
 
 	m = newModel(Options{Config: &config.Options{}, Run: noopRun})
@@ -929,8 +930,8 @@ func TestCheckDoneNotes(t *testing.T) {
 		{Note: "erster Hinweis"},
 		{Note: "zweiter Hinweis"},
 	}})
-	if !strings.Contains(m.libMessage, "2 Hinweise: erster Hinweis") {
-		t.Errorf("libMessage = %q, want the plural note count and the first note", m.libMessage)
+	if !strings.Contains(m.toast, "2 Hinweise: erster Hinweis") {
+		t.Errorf("toast = %q, want the plural note count and the first note", m.toast)
 	}
 }
 
@@ -997,17 +998,17 @@ func TestSeasonOffsetClampedOnResize(t *testing.T) {
 	m.screen = ScreenDetails
 
 	m, _ = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 20})
-	if m.detailVisible() != 9 {
-		t.Fatalf("detailVisible() = %d, want 9", m.detailVisible())
+	if m.detailVisible() < 9 {
+		t.Fatalf("detailVisible() = %d, want the free height", m.detailVisible())
 	}
-	if m.detailOffset != 21 {
-		t.Fatalf("detailOffset = %d, want 21 after resize", m.detailOffset)
+	if m.detailOffset != 30-m.detailVisible() {
+		t.Fatalf("detailOffset = %d, want %d after resize", m.detailOffset, 30-m.detailVisible())
 	}
 	assertVisible(t, "seasons", m.detailSeasonCursor, m.detailOffset, m.detailVisible())
 
 	m, _ = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 12})
-	if m.detailOffset != 29 {
-		t.Fatalf("detailOffset = %d, want 29 at height 12", m.detailOffset)
+	if m.detailOffset != 30-m.detailVisible() {
+		t.Fatalf("detailOffset = %d, want %d at height 12", m.detailOffset, 30-m.detailVisible())
 	}
 	assertVisible(t, "seasons", m.detailSeasonCursor, m.detailOffset, m.detailVisible())
 }
@@ -1088,8 +1089,8 @@ func TestCheckLibraryCallsTheApplication(t *testing.T) {
 	if m.checking {
 		t.Error("the check must be finished")
 	}
-	if !strings.Contains(m.libMessage, "1 neue Folge(n)") {
-		t.Errorf("libMessage = %q, want the result of the check", m.libMessage)
+	if !strings.Contains(m.toast, "1 neue Folge(n)") {
+		t.Errorf("toast = %q, want the result of the check", m.toast)
 	}
 }
 

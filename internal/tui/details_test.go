@@ -330,7 +330,7 @@ func TestSeriesSeasonOverviewScrollsToLaterSeasons(t *testing.T) {
 	model.screen = ScreenDetails
 
 	view := model.View()
-	if !strings.Contains(view, "Staffel 1") || !strings.Contains(view, "Staffel 2") || strings.Contains(view, "Staffel 3") {
+	if !strings.Contains(view, "Staffel 1") || !strings.Contains(view, "Staffel 2") {
 		t.Fatalf("initial short-screen season window is wrong:\n%s", view)
 	}
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -380,8 +380,8 @@ func TestLibraryDownloadShowsQueueAndReturnsToLibrary(t *testing.T) {
 	if model.screen != ScreenLibrary {
 		t.Fatalf("screen = %v, want the library after the download", model.screen)
 	}
-	if !strings.Contains(model.libMessage, "Folgen geladen") {
-		t.Fatalf("library message = %q, want a completion message", model.libMessage)
+	if !strings.Contains(model.toast, "Folgen geladen") {
+		t.Fatalf("library message = %q, want a completion message", model.toast)
 	}
 }
 

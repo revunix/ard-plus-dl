@@ -7,13 +7,17 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/revunix/ard-plus-dl/internal/config"
 	"github.com/revunix/ard-plus-dl/internal/store"
 )
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	// A new key press dismisses the toast of the last action.
+	m.clearToast()
 	if key == "ctrl+c" {
 		switch m.screen {
 		case ScreenQueue, ScreenLoading:
@@ -38,21 +42,31 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.screen {
+	case ScreenSplash:
+		if key == "q" {
+			return m.quit(0)
+		}
+		return m, nil
+
 	case ScreenLibrary:
-		return m.handleLibraryKey(key)
+		return m.handleLibraryKey(msg)
 
 	case ScreenDetails:
 		return m.handleDetailsKey(key)
 
 	case ScreenSeasonEpisodes:
 		return m.handleSeasonEpisodesKey(key)
+
+	case ScreenEditEntry:
+		return m.handleEditEntryKey(msg)
+
 	case ScreenStart:
 		switch key {
 		case "tab", "down":
-			m.focusField((m.focus + 1) % len(m.fields))
+			m.focusField((m.focus + 1) % m.fieldCount())
 			return m, nil
 		case "shift+tab", "up":
-			m.focusField((m.focus + len(m.fields) - 1) % len(m.fields))
+			m.focusField((m.focus + m.fieldCount() - 1) % m.fieldCount())
 			return m, nil
 		case "esc":
 			m.pendingDownload = nil
@@ -81,10 +95,21 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// Settings-only edit: nothing to download.
 				m.loadLibrary()
 				m.screen = ScreenLibrary
-				m.libMessage = "Gespeichert."
+				m.setToast("Gespeichert.", toastSuccess)
 				return m, nil
 			}
 			return m, m.startRun()
+		}
+		if m.focus == m.themeFieldIndex() {
+			// The color scheme is not a text field, so the keys change it.
+			switch key {
+			case "h", "d", "t", "left", "right", "up", "down":
+				m.changeTheme(key)
+				return m, nil
+			}
+		}
+		if m.focus >= len(m.fields) {
+			return m, nil
 		}
 		updated, cmd := m.fields[m.focus].Update(msg)
 		m.fields[m.focus] = updated
@@ -187,6 +212,25 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case ScreenQueue, ScreenLoading:
+		if key == "l" {
+			m.logVisible = !m.logVisible
+			return m, nil
+		}
+		if key == "y" {
+			m.copyAction(m.currentJobPath())
+			return m, nil
+		}
+		if key == "o" {
+			if err := revealPath(m.currentJobPath()); err != nil {
+				m.setToast("Ordner nicht geöffnet: "+err.Error(), toastError)
+				return m, nil
+			}
+			m.setToast("Ordner geöffnet.", toastSuccess)
+			return m, nil
+		}
+		if key == "x" {
+			return m, m.removeJobFileCmd()
+		}
 		if key == "q" {
 			if m.cancelled {
 				return m.quit(130)
@@ -210,27 +254,108 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleLibraryKey(key string) (tea.Model, tea.Cmd) {
+// handleEditEntryKey handles the settings of a single series.
+func (m *Model) handleEditEntryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "tab", "down":
+		m.editFocus = (m.editFocus + 1) % 2
+		m.editErr = ""
+		return m, nil
+	case "shift+tab", "up":
+		m.editFocus = (m.editFocus + 1) % 2
+		m.editErr = ""
+		return m, nil
+	case "esc":
+		m.screen = ScreenLibrary
+		m.editErr = ""
+		return m, nil
+	case "enter":
+		if m.busy {
+			m.editErr = "Eine Aktion läuft noch. Bitte warten."
+			return m, nil
+		}
+		skip, err := m.editSkipValue()
+		if err != nil {
+			m.editErr = err.Error()
+			return m, nil
+		}
+		tag := strings.TrimSpace(m.editTag.Value())
+		if tag != "" {
+			if err := config.ValidateFileTag(tag); err != nil {
+				m.editErr = err.Error()
+				return m, nil
+			}
+		}
+		m.editErr = ""
+		return m, m.editEntryCmd(tag, skip)
+	}
+	field := m.editField()
+	updated, cmd := field.Update(msg)
+	m.setEditField(updated)
+	return m, cmd
+}
+
+// editField returns the focused field of the series settings.
+func (m *Model) editField() textinput.Model {
+	if m.editFocus == 0 {
+		return m.editTag
+	}
+	return m.editSkip
+}
+
+// setEditField stores the focused field of the series settings.
+func (m *Model) setEditField(field textinput.Model) {
+	if m.editFocus == 0 {
+		m.editTag = field
+		return
+	}
+	m.editSkip = field
+}
+
+// editSkipValue reads the number of episodes to skip. Zero and one skip
+// nothing, the same rule the library uses.
+func (m *Model) editSkipValue() (int, error) {
+	raw := strings.TrimSpace(m.editSkip.Value())
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return 0, errors.New("Bitte eine Zahl ab 0 eingeben.")
+	}
+	return value, nil
+}
+
+func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
 	if m.busy {
 		switch key {
 		case "n", "c", "d", "enter", "o", " ", "x":
-			m.libMessage = "Bitte warten, eine Aktion läuft noch."
+			m.setToast("Bitte warten, eine Aktion läuft noch.", toastInfo)
 			return m, nil
 		}
 	}
-	if key != "x" {
+	if key != "x" && key != "r" {
 		m.pendingRemoval = 0
+	}
+	if m.searching {
+		return m.handleSearchKey(msg)
 	}
 	switch key {
 	case "q":
 		return m.quit(0)
+	case "/":
+		m.searching = true
+		m.search.Focus()
+		return m, textinput.Blink
 	case "up", "k":
 		if m.libCursor > 0 {
 			m.libCursor--
 		}
 		m.clampLibOffset()
 	case "down", "j":
-		if m.libCursor < len(m.library)-1 {
+		if m.libCursor < len(m.visibleLibrary())-1 {
 			m.libCursor++
 		}
 		m.clampLibOffset()
@@ -244,7 +369,7 @@ func (m *Model) handleLibraryKey(key string) (tea.Model, tea.Cmd) {
 		m.libCursor = 0
 		m.clampLibOffset()
 	case "end":
-		m.libCursor = len(m.library) - 1
+		m.libCursor = len(m.visibleLibrary()) - 1
 		m.clampLibOffset()
 	case "n", "c":
 		return m, m.checkLibrary()
@@ -257,6 +382,43 @@ func (m *Model) handleLibraryKey(key string) (tea.Model, tea.Cmd) {
 		m.startErr = nil
 		m.screen = ScreenStart
 		return m, nil
+	case "e":
+		entry, ok := m.libraryEntry()
+		if !ok {
+			return m, nil
+		}
+		m.editEntry = entry
+		m.editTag.SetValue(entry.Tag)
+		skip := ""
+		if entry.Skip > 0 {
+			skip = strconv.Itoa(entry.Skip)
+		}
+		m.editSkip.SetValue(skip)
+		m.editFocus = 0
+		m.editErr = ""
+		m.screen = ScreenEditEntry
+		return m, nil
+	case "y":
+		entry, ok := m.libraryEntry()
+		if !ok {
+			return m, nil
+		}
+		m.copyAction(entry.URL)
+		return m, nil
+	case "m":
+		entry, ok := m.libraryEntry()
+		if !ok {
+			return m, nil
+		}
+		if m.libSelected == nil {
+			m.libSelected = map[int64]bool{}
+		}
+		m.libSelected[entry.ID] = !m.libSelected[entry.ID]
+		if !m.libSelected[entry.ID] {
+			delete(m.libSelected, entry.ID)
+		}
+		m.libMessage = m.selectionMessage()
+		return m, nil
 	case "a":
 		m.formPurpose = formAddURL
 		m.pendingDownload = nil
@@ -266,34 +428,120 @@ func (m *Model) handleLibraryKey(key string) (tea.Model, tea.Cmd) {
 		m.screen = ScreenStart
 		return m, nil
 	case "enter", "o":
-		if len(m.library) == 0 {
+		entry, ok := m.libraryEntry()
+		if !ok {
 			return m, nil
 		}
-		entry := m.library[m.libCursor]
+		m.searching = false
+		m.search.Blur()
 		cmd := m.openDetails(entry)
 		return m, tea.Batch(cmd, m.refreshDetails(entry))
 	case "d":
-		if len(m.library) == 0 {
+		entry, ok := m.libraryEntry()
+		if !ok {
 			return m, nil
 		}
-		return m, m.pendingCountCmd(m.library[m.libCursor])
+		return m, m.pendingCountCmd(entry)
 	case " ":
-		if len(m.library) == 0 || m.store == nil {
+		entry, ok := m.libraryEntry()
+		if !ok || m.store == nil {
 			return m, nil
 		}
-		entry := m.library[m.libCursor]
 		return m, m.setEnabledCmd(entry, !entry.Enabled)
-	case "x":
-		if len(m.library) == 0 || m.store == nil {
+	case "r":
+		entry, ok := m.libraryEntry()
+		if !ok {
 			return m, nil
 		}
-		entry := m.library[m.libCursor]
+		if m.pendingRemoval != entry.ID {
+			m.pendingRemoval = entry.ID
+			m.libMessage = entryTitle(entry) + ": r erneut drücken, um Dateien und Verlauf zu löschen."
+			return m, nil
+		}
+		m.pendingRemoval = 0
+		return m, m.resetEntryCmd(entry)
+	case "x":
+		entry, ok := m.libraryEntry()
+		if !ok || m.store == nil {
+			return m, nil
+		}
+		marked := m.markedEntries()
+		if len(marked) > 0 {
+			// The marked entries are removed together.
+			if m.pendingRemoval != entry.ID {
+				m.pendingRemoval = entry.ID
+				m.libMessage = fmt.Sprintf("%d markierte Einträge: x erneut drücken zum Entfernen.", len(marked))
+				return m, nil
+			}
+			return m, m.removeMarkedCmd(marked)
+		}
 		if m.pendingRemoval != entry.ID {
 			m.pendingRemoval = entry.ID
 			m.libMessage = entryTitle(entry) + ": x erneut drücken zum Entfernen."
 			return m, nil
 		}
 		return m, m.removeSeriesCmd(entry)
+	}
+	return m, nil
+}
+
+// markedEntries returns the marked entries of the library in the order of the
+// list.
+func (m *Model) markedEntries() []store.Series {
+	if len(m.libSelected) == 0 {
+		return nil
+	}
+	marked := make([]store.Series, 0, len(m.libSelected))
+	for _, entry := range m.visibleLibrary() {
+		if m.libSelected[entry.ID] {
+			marked = append(marked, entry)
+		}
+	}
+	return marked
+}
+
+// selectionMessage describes the marked entries.
+func (m *Model) selectionMessage() string {
+	marked := m.markedEntries()
+	if len(marked) == 0 {
+		return "Auswahl aufgehoben."
+	}
+	return fmt.Sprintf("%d %s markiert.", len(marked), entryWord(len(marked)))
+}
+
+// handleSearchKey handles the search field of the library.
+func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "enter":
+		m.searching = false
+		m.search.Blur()
+		return m, nil
+	case "esc":
+		m.searching = false
+		m.search.Blur()
+		m.search.SetValue("")
+		m.clampLibOffset()
+		return m, nil
+	case "up", "down":
+		// The cursor moves, the search term stays where it is.
+	default:
+		updated, cmd := m.search.Update(msg)
+		m.search = updated
+		m.clampLibOffset()
+		return m, cmd
+	}
+	switch key {
+	case "up", "k":
+		if m.libCursor > 0 {
+			m.libCursor--
+		}
+		m.clampLibOffset()
+	case "down", "j":
+		if m.libCursor < len(m.visibleLibrary())-1 {
+			m.libCursor++
+		}
+		m.clampLibOffset()
 	}
 	return m, nil
 }
@@ -336,6 +584,9 @@ func (m *Model) handleDetailsKey(key string) (tea.Model, tea.Cmd) {
 		case "d":
 			season := m.detailSeasons[m.detailSeasonCursor].number
 			return m, m.downloadSeason(season)
+		case "y":
+			m.copyAction(m.details.URL)
+			return m, nil
 		}
 		return m, nil
 	}
@@ -411,6 +662,11 @@ func (m *Model) handleEpisodeListKey(key string, inSeason bool) (tea.Model, tea.
 		m.detailChoiceExplicit = true
 	case "d", "enter":
 		return m, m.downloadDetails()
+	case "y":
+		if m.detailCursor < len(episodes) {
+			m.copyAction(episodes[m.detailCursor].Title)
+		}
+		return m, nil
 	}
 	return m, nil
 }
