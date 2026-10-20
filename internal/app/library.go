@@ -252,7 +252,7 @@ func (a *App) downloadSelection(ctx context.Context, entry store.Series, wanted 
 	a.onlyEpisodes = wanted
 	a.nonInteractive = true
 	a.applySeriesDefaults(entry)
-	a.markDownloaded = func(episodeID string) { _ = a.Store.MarkDownloaded(seriesID, episodeID) }
+	a.markDownloaded = func(episodeID, path string) { _ = a.Store.MarkDownloaded(seriesID, episodeID, path) }
 	defer func() {
 		a.onlyEpisodes = nil
 		a.onlySeasons = nil

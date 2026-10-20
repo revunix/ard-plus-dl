@@ -698,7 +698,7 @@ func TestPendingAndMarkDownloaded(t *testing.T) {
 
 	t.Run("mark downloaded removes the episode from pending", func(t *testing.T) {
 		s, id := seedSeriesWithEpisodes(t)
-		if err := s.MarkDownloaded(id, "s2e3"); err != nil {
+		if err := s.MarkDownloaded(id, "s2e3", ""); err != nil {
 			t.Fatalf("MarkDownloaded: %v", err)
 		}
 		if got, err := s.CountPending(id); err != nil || got != 3 {
@@ -716,7 +716,7 @@ func TestPendingAndMarkDownloaded(t *testing.T) {
 	t.Run("marking every episode leaves nothing pending", func(t *testing.T) {
 		s, id := seedSeriesWithEpisodes(t)
 		for _, episodeID := range []string{"s1e1", "s1e2", "s2e1", "s2e3"} {
-			if err := s.MarkDownloaded(id, episodeID); err != nil {
+			if err := s.MarkDownloaded(id, episodeID, ""); err != nil {
 				t.Fatalf("MarkDownloaded(%q): %v", episodeID, err)
 			}
 		}
@@ -734,7 +734,7 @@ func TestPendingAndMarkDownloaded(t *testing.T) {
 
 	t.Run("marking an unknown episode is a no-op", func(t *testing.T) {
 		s, id := seedSeriesWithEpisodes(t)
-		if err := s.MarkDownloaded(id, "does-not-exist"); err != nil {
+		if err := s.MarkDownloaded(id, "does-not-exist", ""); err != nil {
 			t.Fatalf("MarkDownloaded(unknown): %v", err)
 		}
 		if n := countRows(t, s, `SELECT COUNT(*) FROM episodes WHERE series_id = ? AND downloaded_at IS NOT NULL`, id); n != 0 {
@@ -751,7 +751,7 @@ func TestPendingAndMarkDownloaded(t *testing.T) {
 		if _, err := s.SyncEpisodes(other, []EpisodeRef{{ID: "o1", Season: 1, Number: 1}}); err != nil {
 			t.Fatalf("SyncEpisodes: %v", err)
 		}
-		if err := s.MarkDownloaded(id, "s2e3"); err != nil {
+		if err := s.MarkDownloaded(id, "s2e3", ""); err != nil {
 			t.Fatalf("MarkDownloaded: %v", err)
 		}
 		if got, want := pendingIDs(t, s, other), []string{"o1"}; !slices.Equal(got, want) {

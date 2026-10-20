@@ -212,7 +212,7 @@ func TestDownloadNewTatortDoesNotPrompt(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SyncEpisodes: %v", err)
 	}
-	if err := state.MarkDownloaded(id, "e2"); err != nil {
+	if err := state.MarkDownloaded(id, "e2", ""); err != nil {
 		t.Fatalf("MarkDownloaded: %v", err)
 	}
 	entry := libraryEntry(t, state, url)

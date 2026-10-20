@@ -81,7 +81,7 @@ func (a *App) movieFlow(ctx context.Context, movie *ardplus.Movie) error {
 		return err
 	}
 	a.logf("Lade Film %s...", staging)
-	if err := a.downloadItem(ctx, item, movie.ID, contentTypeMovie, movie.DashURL, staging, name); err != nil {
+	if _, err := a.downloadItem(ctx, item, movie.ID, contentTypeMovie, movie.DashURL, staging, name, ""); err != nil {
 		return err
 	}
 	return nil
@@ -185,15 +185,16 @@ func (a *App) seriesFlow(ctx context.Context, series *ardplus.Series, skip int) 
 				if a.UI != nil {
 					a.UI.Event(Event{Kind: EventSkipped, Label: staging})
 				}
-				a.markDone(episode.ID)
+				a.markDone(episode.ID, "")
 				continue
 			}
 			a.logf("Lade %s...", staging)
-			if err := a.downloadItem(ctx, item, episode.ID, contentTypeEpisode, episode.DashURL, staging, staging); err != nil {
+			final, err := a.downloadItem(ctx, item, episode.ID, contentTypeEpisode, episode.DashURL, staging, staging, episode.ID)
+			if err != nil {
 				a.recordEpisodeFailure("%s", err.Error())
 				continue
 			}
-			a.markDone(episode.ID)
+			a.markDone(episode.ID, final)
 		}
 	}
 	if a.episodeFailures > 0 {
@@ -267,15 +268,16 @@ func (a *App) tatortFlow(ctx context.Context, slug string) error {
 			if a.UI != nil {
 				a.UI.Event(Event{Kind: EventSkipped, Label: staging})
 			}
-			a.markDone(episodeID)
+			a.markDone(episodeID, "")
 			continue
 		}
 		a.logf("Lade %s...", staging)
-		if err := a.downloadItem(ctx, item, movie.ID, contentTypeMovie, movie.DashURL, staging, staging); err != nil {
+		final, err := a.downloadItem(ctx, item, movie.ID, contentTypeMovie, movie.DashURL, staging, staging, episodeID)
+		if err != nil {
 			a.recordEpisodeFailure("%s", err.Error())
 			continue
 		}
-		a.markDone(episodeID)
+		a.markDone(episodeID, final)
 		// The pause keeps the requests to the API at a human pace. It gives
 		// up when the run is cancelled.
 		if err := sleep(ctx, time.Second); err != nil {
@@ -334,24 +336,24 @@ func (a *App) recordEpisodeFailures(count int, format string, args ...any) {
 }
 
 // downloadItem authorizes, downloads, muxes and renames one item.
-func (a *App) downloadItem(ctx context.Context, item download.Item, contentID, contentType, dashURL, staging, label string) error {
+func (a *App) downloadItem(ctx context.Context, item download.Item, contentID, contentType, dashURL, staging, label, episodeID string) (string, error) {
 	if a.UI != nil {
-		a.UI.Event(Event{Kind: EventQueued, Label: label, Path: a.Manager.StagingPath(item)})
+		a.UI.Event(Event{Kind: EventQueued, Label: label, Path: a.Manager.StagingPath(item), EpisodeID: episodeID})
 	}
 	param, err := a.Session.Authorization(ctx, contentID, contentType)
 	if err != nil {
-		return a.fail("no playback authorization for %s: %s", staging, err.Error())
+		return "", a.fail("no playback authorization for %s: %s", staging, err.Error())
 	}
 	// The playback session must also be released when the run is cancelled,
 	// so the context is detached from the cancellation.
 	defer a.Session.Release(context.WithoutCancel(ctx), contentID, contentType)
 
 	if dashURL == "" {
-		return a.fail("no video URL in API response for %s", staging)
+		return "", a.fail("no video URL in API response for %s", staging)
 	}
 	manifestURL, err := buildManifestURL(dashURL, param)
 	if err != nil {
-		return a.fail("invalid video URL for %s: %s", staging, err.Error())
+		return "", a.fail("invalid video URL for %s: %s", staging, err.Error())
 	}
 
 	workDir := a.Manager.WorkDir(item)
@@ -361,20 +363,20 @@ func (a *App) downloadItem(ctx context.Context, item download.Item, contentID, c
 		}
 	})
 	if err != nil {
-		return a.fail("download failed for %s: %s", staging, err.Error())
+		return "", a.fail("download failed for %s: %s", staging, err.Error())
 	}
 	stagingPath := a.Manager.StagingPath(item)
 	if err := a.Fetcher.Mux(ctx, workDir, tracks, stagingPath); err != nil {
-		return a.fail("muxing failed for %s: %s", staging, err.Error())
+		return "", a.fail("muxing failed for %s: %s", staging, err.Error())
 	}
 	final, err := a.Manager.Finalize(ctx, item, stagingPath+".mp4")
 	if err != nil {
-		return err
+		return "", err
 	}
 	if a.UI != nil {
-		a.UI.Event(Event{Kind: EventDone, Label: label, Path: final})
+		a.UI.Event(Event{Kind: EventDone, Label: label, Path: final, EpisodeID: episodeID})
 	}
-	return nil
+	return final, nil
 }
 
 // buildManifestURL adds the playback parameters to the manifest URL. The

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -20,6 +21,7 @@ const (
 	SettingUsername = "username"
 	SettingFileTag  = "file_tag"
 	SettingLastURL  = "last_url"
+	SettingTheme    = "theme"
 )
 
 // Series kinds.
@@ -57,6 +59,9 @@ type KnownEpisode struct {
 	EpisodeRef
 	FirstSeen    time.Time
 	DownloadedAt *time.Time
+	// Path is the file the episode was downloaded to, empty when it was
+	// never downloaded.
+	Path string
 }
 
 // Store is the SQLite backed application state.
@@ -91,10 +96,17 @@ CREATE TABLE IF NOT EXISTS episodes (
     number        INTEGER NOT NULL DEFAULT 0,
     first_seen    TEXT NOT NULL,
     downloaded_at TEXT,
+    path          TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (series_id, episode_id)
 );
 CREATE INDEX IF NOT EXISTS episodes_open ON episodes(series_id, downloaded_at);
 `
+
+// migrations run after the schema was created. They add the columns that
+// later versions introduced.
+var migrations = []string{
+	`ALTER TABLE episodes ADD COLUMN path TEXT NOT NULL DEFAULT ''`,
+}
 
 // Open opens (and creates) the database at path.
 func Open(path string) (*Store, error) {
@@ -119,6 +131,13 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
+	}
+	for _, statement := range migrations {
+		// A column that already exists is not an error.
+		if _, err := db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			db.Close()
+			return nil, fmt.Errorf("migrate schema: %w", err)
+		}
 	}
 	// The database holds the library and the username, so keep it private.
 	_ = os.Chmod(path, 0o600)
@@ -321,7 +340,7 @@ func (s *Store) SyncEpisodes(seriesID int64, episodes []EpisodeRef) ([]EpisodeRe
 // Pending returns the stored episodes that were not downloaded yet, newest
 // season and episode first.
 func (s *Store) Pending(seriesID int64) ([]KnownEpisode, error) {
-	rows, err := s.db.Query(`SELECT episode_id, title, season, number, first_seen, downloaded_at
+	rows, err := s.db.Query(`SELECT episode_id, title, season, number, first_seen, downloaded_at, path
         FROM episodes WHERE series_id = ? AND downloaded_at IS NULL
         ORDER BY season DESC, number DESC`, seriesID)
 	if err != nil {
@@ -339,7 +358,7 @@ func scanEpisodes(rows *sql.Rows) ([]KnownEpisode, error) {
 			firstSeen string
 			downl     sql.NullString
 		)
-		if err := rows.Scan(&episode.ID, &episode.Title, &episode.Season, &episode.Number, &firstSeen, &downl); err != nil {
+		if err := rows.Scan(&episode.ID, &episode.Title, &episode.Season, &episode.Number, &firstSeen, &downl, &episode.Path); err != nil {
 			return nil, err
 		}
 		if parsed := parseStamp(firstSeen); parsed != nil {
@@ -353,7 +372,7 @@ func scanEpisodes(rows *sql.Rows) ([]KnownEpisode, error) {
 
 // Episodes returns every stored episode of one entry, newest first.
 func (s *Store) Episodes(seriesID int64) ([]KnownEpisode, error) {
-	rows, err := s.db.Query(`SELECT episode_id, title, season, number, first_seen, downloaded_at
+	rows, err := s.db.Query(`SELECT episode_id, title, season, number, first_seen, downloaded_at, path
         FROM episodes WHERE series_id = ?
         ORDER BY season DESC, number DESC, first_seen DESC`, seriesID)
 	if err != nil {
@@ -370,10 +389,26 @@ func (s *Store) CountPending(seriesID int64) (int, error) {
 	return count, err
 }
 
-// MarkDownloaded records that one episode was downloaded.
-func (s *Store) MarkDownloaded(seriesID int64, episodeID string) error {
-	_, err := s.db.Exec(`UPDATE episodes SET downloaded_at = ? WHERE series_id = ? AND episode_id = ?`,
-		nowStamp(), seriesID, episodeID)
+// MarkDownloaded records that one episode was downloaded and where the file
+// ended up.
+func (s *Store) MarkDownloaded(seriesID int64, episodeID, path string) error {
+	_, err := s.db.Exec(`UPDATE episodes SET downloaded_at = ?, path = ? WHERE series_id = ? AND episode_id = ?`,
+		nowStamp(), path, seriesID, episodeID)
+	return err
+}
+
+// ClearDownloaded forgets that one episode was downloaded, so it is offered
+// again. The path of the file is kept for the cleanup.
+func (s *Store) ClearDownloaded(seriesID int64, episodeID string) error {
+	_, err := s.db.Exec(`UPDATE episodes SET downloaded_at = NULL WHERE series_id = ? AND episode_id = ?`,
+		seriesID, episodeID)
+	return err
+}
+
+// ClearEpisodes forgets the history of one entry, so every episode is offered
+// again.
+func (s *Store) ClearEpisodes(seriesID int64) error {
+	_, err := s.db.Exec(`DELETE FROM episodes WHERE series_id = ?`, seriesID)
 	return err
 }
 

@@ -66,6 +66,10 @@ type Event struct {
 	Message string
 	Done    int
 	Total   int
+	// EpisodeID names the episode the event belongs to.
+	EpisodeID string
+	// SeriesID names the library entry of the episode.
+	SeriesID int64
 }
 
 // UI is the front end the app talks to.
@@ -99,7 +103,7 @@ type App struct {
 	// onlyEpisodes, when set, restricts the series and Tatort flows to these
 	// episode IDs; markDownloaded records finished episodes in the library.
 	onlyEpisodes   map[string]bool
-	markDownloaded func(episodeID string)
+	markDownloaded func(episodeID, path string)
 	// onlySeasons, when set for a selection, holds the requested episodes per
 	// season number so the flow skips seasons without requested episodes.
 	onlySeasons map[int]int
@@ -137,10 +141,11 @@ func (a *App) itemTag() string {
 	return a.fileTag
 }
 
-// markDone records a downloaded episode in the library.
-func (a *App) markDone(episodeID string) {
+// markDone records a downloaded episode in the library. The path is the file
+// the episode ended up in, empty when it was already there.
+func (a *App) markDone(episodeID, path string) {
 	if a.markDownloaded != nil {
-		a.markDownloaded(episodeID)
+		a.markDownloaded(episodeID, path)
 	}
 }
 
