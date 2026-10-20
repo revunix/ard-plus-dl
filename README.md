@@ -22,13 +22,19 @@ Ein einzelnes Go-Binary für Linux, Windows und macOS mit interaktiver Terminal-
 
 ## Screenshots
 
-| Downloads | Bibliothek |
-|-----------|------------|
-| ![Downloads und Aktivität](docs/screenshots/downloads.png) | ![Bibliothek](docs/screenshots/library.png) |
+| Bibliothek | Downloads |
+|------------|-----------|
+| ![Bibliothek mit Details der markierten Serie](docs/screenshots/library.png) | ![Queue mit Fortschritt und Aktivitätsprotokoll](docs/screenshots/downloads.png) |
 
-| Staffeln und Folgen |
-|---------------------|
-| ![Staffeln und Folgen](docs/screenshots/episodes.png) |
+| Folgen | Einstellungen der Serie |
+|-------|------------------------|
+| ![Folgenliste mit Details der markierten Folge](docs/screenshots/episodes.png) | ![Datei-Tag und Überspringen einer Serie](docs/screenshots/settings.png) |
+
+| Startbildschirm | Helles Schema |
+|-----------------|---------------|
+| ![Startbildschirm mit Logo und Version](docs/screenshots/splash.png) | ![Bibliothek im hellen Schema](docs/screenshots/library-light.png) |
+
+Die Bilder lassen sich neu erzeugen: `python3 docs/screenshots/render.py`.
 
 ## Voraussetzungen
 
@@ -71,6 +77,7 @@ Ohne URL startet die TUI und fragt die fehlenden Angaben ab. Optionen müssen vo
 | `username`, `password` | Optional: eigene ARD-Plus-Zugangsdaten, beide nötig (siehe [Zugangsdaten](#zugangsdaten)) |
 | `skip` | Optional: erste N Episoden der **ersten Staffel** überspringen; `0`/`1` überspringt nichts |
 | `--library` | Gespeicherte Serien mit Anzahl neuer Folgen auflisten |
+| `--json` | Die Bibliothek als JSON ausgeben (zusammen mit `--library`), für Skripte |
 | `--check` | Alle gespeicherten Serien auf neue Folgen prüfen (ohne Download) |
 | `--download-new` | Prüfen und die neuen Folgen herunterladen |
 | `--add <url>` | Eine Serie/Tatort-Kategorie in die Bibliothek aufnehmen, ohne zu laden |
@@ -79,12 +86,27 @@ Jeder normale Download trägt die URL automatisch in die Bibliothek ein.
 
 ### TUI
 
-Mit einem Terminal (und ohne `--automatic`/`--links-file`) startet die interaktive Oberfläche auf der **Bibliothek**, sobald Serien gespeichert sind. Die TUI benötigt mindestens 40x12 Zeichen. Lange Listen scrollen; ober- und unterhalb des sichtbaren Ausschnitts zeigt `… N weitere` die Anzahl der verborgenen Zeilen.
+Mit einem Terminal (und ohne `--automatic`/`--links-file`) startet die interaktive Oberfläche mit einem kurzen **Startbildschirm** (Logo, Version, Ladeanzeige) und wechselt dann auf die **Bibliothek**, sobald Serien gespeichert sind. Die TUI benötigt mindestens 40x12 Zeichen. Lange Listen scrollen; ober- und unterhalb des sichtbaren Ausschnitts zeigt `… N weitere` die Anzahl der verborgenen Zeilen.
 
-`?` blendet die Hilfe ein und aus; jede andere Taste schließt sie wieder. `ctrl+c` hat Vorrang und beendet die TUI auch bei offener Hilfe.
+**Erscheinungsbild**: In den Einstellungen (`s` in der Bibliothek) lässt sich zwischen *Hell*, *Dunkel* und *Automatisch* wählen (`h`, `d`, `t`; mit `tab` bis zur Zeile „Erscheinungsbild“ blättern). Die Wahl wird gespeichert und beim nächsten Start wiederhergestellt. *Automatisch* erkennt die Hintergrundfarbe des Terminals und nimmt das passende Schema; *Hell* und *Dunkel* legen es fest. Jedes Schema malt die Oberfläche komplett in seinen Farben – inklusive Hintergrund –, damit die Ansicht unabhängig vom Terminal gleich aussieht.
+
+Die Oberfläche ist flach aufgebaut: eine Kopfzeile mit Breadcrumb und Kontext-Chip, darunter Inhalte als Karten (Titelzeile plus Trennlinie statt Rahmen) und unten eine Fußzeile, in der die Tasten als Chips erscheinen. Der markierte Eintrag ist über einen Cursor-Chip und fette Akzentfarbe erkennbar, nicht über eine farbige Vollbreiten-Fläche.
+
+Die Oberfläche passt sich dem Terminal an: Kopfzeile, Trennlinien und Fußzeile nutzen die volle Breite, der Inhalt füllt die volle Höhe und die Tastenhinweise stehen immer auf der letzten Zeile. Listen bekommen genau so viele Zeilen, wie zwischen Kopfzeile, Karte und Fußzeile Platz ist. Läuft der Text, wird er umbrochen statt abgeschnitten.
+
+Läuft gerade eine Aktion, zeigt die Kopfzeile einen Spinner mit dem aktuellen Schritt. Das Ergebnis der letzten Aktion erscheint als Kurzmeldung über den Tastenhinweisen und verschwindet, sobald weitergearbeitet wird. Leere Ansichten nennen die Taste, die weiterführt, und Inhalte, die noch geladen werden, zeigen Platzhalterzeilen.
+
+Ab 92 Spalten Breite zeigen die Listen einen zweiten Bereich neben sich: in der Bibliothek die Angaben zum markierten Eintrag, in der Staffel- und Folgenliste die Angaben zur markierten Staffel beziehungsweise Folge. Schmalere Terminals bleiben einspaltig. Die Download-Ansicht listet alle Dateien in einer Queue-Karte; `l` blendet das Aktivitätsprotokoll ein oder aus.
+
+Die Fußzeile zeigt nur die wichtigsten Tasten des aktuellen Bildschirms. `?` blendet ein **Hilfe-Fenster** ein, das über der Seite liegt und alle Tasten des Bildschirms auflistet; jede andere Taste schließt es wieder. `ctrl+c` hat Vorrang und beendet die TUI auch bei offenem Hilfefenster.
 
 1. **Bibliothek** - gespeicherte Serien/Filme/Tatort-Städte mit Anzahl neuer Folgen
    - `enter` öffnet den Eintrag und aktualisiert Staffeln/Folgen; `d` lädt neue Folgen und öffnet die Download-Ansicht, `n` prüft alle Einträge
+   - `/` sucht in der Bibliothek (Titel oder URL), `esc` löscht den Filter
+   - `m` markiert Einträge; markierte Einträge lassen sich gemeinsam entfernen (`x`, zweimal drücken)
+   - `r` setzt die markierte Serie zurück: die heruntergeladenen Dateien werden gelöscht und der Verlauf geleert, sodass alle Folgen wieder angeboten werden
+   - `e` öffnet die Einstellungen der markierten Serie: eigener Datei-Tag und die Anzahl der zu überspringenden Episoden (`0` oder `1` überspringt keine)
+   - `y` kopiert die URL in die Zwischenablage
    - `space` aktivieren/deaktivieren, `x` entfernt nach erneutem Druck (zweistufige Sicherheitsabfrage in der Statuszeile)
    - `pgup`/`pgdown` blättern, `home`/`end` springen an den Anfang bzw. ans Ende
    - `a` neue URL aufnehmen, `s` Einstellungen (Benutzer, Passwort, Datei-Tag), `q` beenden
@@ -92,13 +114,14 @@ Mit einem Terminal (und ohne `--automatic`/`--links-file`) startet die interakti
    - `up`/`down` wählen eine Staffel, `pgup`/`pgdown` blättern, `home`/`end` springen an den Anfang bzw. ans Ende
    - `enter` öffnet die Folgenliste, `d` lädt alle offenen Folgen der Staffel
 3. **Folgenliste** - Folgen der ausgewählten Staffel mit Status (geladen/offen)
+   - `y` kopiert den Titel der markierten Folge in die Zwischenablage
    - `space` wählt einzelne Folgen, `a` alle/keine, `enter`/`d` lädt die Auswahl. Ohne jede Markierung werden alle offenen Folgen der Staffel geladen; nach einer Abwahl werden nur die markierten geladen, bei keiner Markierung keine
    - `pgup`/`pgdown` blättern, `home`/`end` springen an den Anfang bzw. ans Ende
    - `esc` zurück zu den Staffeln; bei Tatort bleibt die Folgenliste flach und `esc` kehrt zur Bibliothek zurück
-4. **Start** - URL, Zugangsdaten und Datei-Tag eingeben (`tab` wechselt das Feld, `enter` startet bzw. speichert, `esc` zurück)
+4. **Start** - URL, Zugangsdaten und Datei-Tag eingeben (`tab` wechselt das Feld, `enter` startet bzw. speichert, `esc` zurück); in den Einstellungen zusätzlich das Erscheinungsbild (`h` hell, `d` dunkel, `t` automatisch)
 5. **Serie** - beim Start einer neuen Serie Staffeln auswählen (`space` umschalten, `a` alle, `enter` starten, `pgup`/`pgdown`/`home`/`end` navigieren)
 6. **Tatort** - Anzahl zu überspringender Episoden (`0` bis `N`, `0` = alle laden)
-7. **Downloads** - öffnet sich automatisch; links aktive Datei und Fortschritt, rechts die letzten Meldungen; bei schmalen Terminals untereinander. `q`/`ctrl+c`: erster Druck bricht ab, zweiter beendet die TUI
+7. **Downloads** - öffnet sich automatisch; die Queue listet alle Dateien mit Status und Fortschritt samt grober Restzeit, `l` blendet das Aktivitätsprotokoll ein oder aus, `y` kopiert den Zielpfad der laufenden Datei, `o` öffnet den Ordner im Dateimanager, `x` löscht die Datei der laufenden Datei (zweimal drücken; die Folge gilt danach wieder als offen); bei schmalen Terminals untereinander. `q`/`ctrl+c`: erster Druck bricht ab, zweiter beendet die TUI
 8. **Fertig** - Zusammenfassung; `l` zurück zur Bibliothek, `q`/`enter` beendet
 
 ### Tatort-Archiv
