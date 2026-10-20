@@ -4,9 +4,11 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
+	"time"
 
 	"github.com/revunix/ard-plus-dl/internal/app"
 	"github.com/revunix/ard-plus-dl/internal/ardplus"
@@ -27,6 +29,9 @@ func runLibraryMode(ctx context.Context, opts *config.Options, env config.Env, s
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
+		}
+		if opts.JSON {
+			return printLibraryJSON(stdout, entries)
 		}
 		printLibrary(stdout, entries)
 		return 0
@@ -136,6 +141,53 @@ func displayTitle(result app.CheckResult) string {
 		return result.Title
 	}
 	return result.Series.URL
+}
+
+// libraryEntryJSON is one entry of the library in the machine readable form.
+type libraryEntryJSON struct {
+	ID       int64  `json:"id"`
+	URL      string `json:"url"`
+	Title    string `json:"title"`
+	Kind     string `json:"kind"`
+	Enabled  bool   `json:"enabled"`
+	Tag      string `json:"tag"`
+	Skip     int    `json:"skip"`
+	NewCount int    `json:"new_count"`
+	AddedAt  string `json:"added_at"`
+	Checked  string `json:"checked_at,omitempty"`
+	LastErr  string `json:"last_error,omitempty"`
+}
+
+// printLibraryJSON writes the library as JSON for scripts.
+func printLibraryJSON(w io.Writer, entries []store.Series) int {
+	list := make([]libraryEntryJSON, 0, len(entries))
+	for _, entry := range entries {
+		item := libraryEntryJSON{
+			ID:       entry.ID,
+			URL:      entry.URL,
+			Title:    entry.Title,
+			Kind:     entry.Kind,
+			Enabled:  entry.Enabled,
+			Tag:      entry.Tag,
+			Skip:     entry.Skip,
+			NewCount: entry.NewCount,
+			LastErr:  entry.LastError,
+		}
+		if !entry.AddedAt.IsZero() {
+			item.AddedAt = entry.AddedAt.Local().Format(time.RFC3339)
+		}
+		if entry.CheckedAt != nil {
+			item.Checked = entry.CheckedAt.Local().Format(time.RFC3339)
+		}
+		list = append(list, item)
+	}
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(list); err != nil {
+		fmt.Fprintln(w, err)
+		return 1
+	}
+	return 0
 }
 
 func printLibrary(w io.Writer, entries []store.Series) {

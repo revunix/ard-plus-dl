@@ -51,6 +51,8 @@ type Options struct {
 	AddURL string
 	// LibraryPath is the SQLite database.
 	LibraryPath string
+	// JSON prints the library in the machine readable form.
+	JSON bool
 
 	DownloadsDir    string
 	TokenFile       string
@@ -95,6 +97,9 @@ func ParseArgs(args []string) (*Options, error) {
 				return nil, err
 			}
 			i++
+		case a == "--json":
+			o.JSON = true
+			i++
 		case a == "--check":
 			if err := o.setLibraryMode("check"); err != nil {
 				return nil, err
@@ -135,7 +140,13 @@ func ParseArgs(args []string) (*Options, error) {
 		if len(positional) > 0 {
 			return nil, fmt.Errorf("unexpected argument: %s", positional[0])
 		}
+		if o.JSON && o.LibraryMode != "list" {
+			return nil, errors.New("--json requires --library")
+		}
 		return o, nil
+	}
+	if o.JSON {
+		return nil, errors.New("--json requires --library")
 	}
 
 	if o.Batch() {

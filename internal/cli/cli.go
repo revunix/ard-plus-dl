@@ -41,6 +41,7 @@ Options (they must come before the URL):
   --links-file <file>    read URLs from <file> (batch mode)
   --force-redownload     delete existing files and download again
   --library              list the stored series and their new episodes
+  --json                 print the library as JSON (together with --library)
   --check                check every stored series for new episodes
   --download-new         check and download the new episodes
   --add <url>            add a URL to the library without downloading
@@ -189,6 +190,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			NeedsLogin:  !hasToken,
 			Store:       state,
 			Secrets:     secrets,
+			Version:     Version,
+			Splash:      true,
 			Run: func(runCtx context.Context) error {
 				return application.Run(runCtx)
 			},

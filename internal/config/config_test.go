@@ -503,3 +503,20 @@ func TestValidateContentURL(t *testing.T) {
 		}
 	})
 }
+
+// TestJSONNeedsTheLibraryMode checks the argument check for --json.
+func TestJSONNeedsTheLibraryMode(t *testing.T) {
+	if _, err := ParseArgs([]string{"--json"}); err == nil {
+		t.Fatal("--json without --library must fail")
+	}
+	if _, err := ParseArgs([]string{"--library", "--json"}); err != nil {
+		t.Fatalf("--library --json must work: %v", err)
+	}
+	opts, err := ParseArgs([]string{"--library", "--json"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !opts.JSON {
+		t.Fatal("the option must be set")
+	}
+}
