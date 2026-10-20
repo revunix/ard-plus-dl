@@ -338,7 +338,7 @@ func (a *App) ExpandHub(ctx context.Context, entry store.Series) ([]store.Series
 
 	var created []store.Series
 	for _, category := range categories {
-		url := a.API.CategoryPageURL(category.Slug)
+		url := categoryURL(category.Slug)
 		if _, err := a.Store.UpsertSeries(url, category.Title, store.KindTatort); err != nil {
 			result.Err = err
 			return created, result

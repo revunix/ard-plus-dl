@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -736,5 +737,58 @@ func TestDownloadNewIgnoresAnInvalidPerSeriesTag(t *testing.T) {
 	}
 	if len(matches) != 1 {
 		t.Fatalf("files with the global tag = %v, want exactly one", matches)
+	}
+}
+
+// The Tatort archive is replaced by one entry per category. The download of
+// the hub must download the episodes of the categories it created.
+func TestDownloadHubExpandsTheArchiveAndDownloadsTheCategories(t *testing.T) {
+	h, state := newLibraryHarness(t)
+	const hubURL = "https://www.ardplus.de/tatort"
+	hubID, err := state.UpsertSeries(hubURL, "Tatort (alle)", store.KindTatort)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := libraryEntry(t, state, hubURL)
+
+	h.backend.setHub(func() (string, int) {
+		return `{"items":[{"title":"Köln","slug":"tatort-koeln"},{"title":"Münster","slug":"tatort-muenster"}]}`, http.StatusOK
+	})
+	h.backend.setCategory(func(slug string) (string, int) {
+		// The detail id is the part before the first dash.
+		return tatortHTML("https://www.ardplus.de/details/" + strings.TrimPrefix(slug, "tatort-")), http.StatusOK
+	})
+	h.backend.setGraphQL(func(_ string, variables map[string]any) (string, int) {
+		id, _ := variables["movieId"].(string)
+		return dataResponse(map[string]any{
+			"movie":  tatortMovieData(id, "Der Fall", "2023", id, "Team A", "7", "https://cdn.test/"+id+".mpd"),
+			"series": nil,
+		})
+	})
+
+	if err := h.app.DownloadNew(context.Background(), hub); err != nil {
+		t.Fatalf("DownloadNew: %v", err)
+	}
+
+	// The archive entry is gone, the categories took its place.
+	entries, err := state.SeriesList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slugs []string
+	for _, entry := range entries {
+		if entry.ID == hubID {
+			t.Error("the archive entry must be removed")
+		}
+		slugs = append(slugs, entry.URL)
+	}
+	if len(slugs) != 2 {
+		t.Fatalf("library entries = %v, want the two categories", slugs)
+	}
+
+	// Both categories were checked and downloaded.
+	fetches := h.fetcher.fetchList()
+	if len(fetches) != 2 {
+		t.Fatalf("Fetch calls = %v, want one per category", fetches)
 	}
 }

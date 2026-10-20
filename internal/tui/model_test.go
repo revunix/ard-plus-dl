@@ -94,8 +94,6 @@ func TestStartScreenValidation(t *testing.T) {
 
 	// A valid URL with a valid tag starts the run.
 	m.fields[3].SetValue("example")
-	reply := make(chan error, 1)
-	m, _ = update(t, m, StartRequest{Reply: reply})
 	m, cmd := update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if m.startErr != nil {
 		t.Fatalf("startErr = %v, want nil", m.startErr)
@@ -108,14 +106,6 @@ func TestStartScreenValidation(t *testing.T) {
 	}
 	if m.screen != ScreenLoading {
 		t.Errorf("screen = %v, want ScreenLoading", m.screen)
-	}
-	select {
-	case err := <-reply:
-		if err != nil {
-			t.Errorf("reply = %v, want nil", err)
-		}
-	default:
-		t.Error("the start reply was never sent")
 	}
 	if cmd == nil {
 		t.Fatal("starting the run must return a command")
@@ -628,8 +618,6 @@ func TestQuitClosesPendingRequests(t *testing.T) {
 	m.seasonsDone = make(chan struct{})
 	m.categoriesDone = make(chan struct{})
 	m.skipDone = make(chan struct{})
-	reply := make(chan error, 1)
-	m.startReply = reply
 	seasonsDone, categoriesDone, skipDone := m.seasonsDone, m.categoriesDone, m.skipDone
 
 	m, cmd := update(t, m, tea.KeyMsg{Type: tea.KeyCtrlC})
@@ -645,14 +633,6 @@ func TestQuitClosesPendingRequests(t *testing.T) {
 		default:
 			t.Errorf("the %s done channel was not closed", name)
 		}
-	}
-	select {
-	case err := <-reply:
-		if !errors.Is(err, errQuit) {
-			t.Errorf("start reply = %v, want errQuit", err)
-		}
-	default:
-		t.Error("the pending start request was not answered")
 	}
 	if cmd == nil {
 		t.Fatal("quitting must return a command")
@@ -1079,5 +1059,44 @@ func TestEnterWithoutSelectionShowsAHint(t *testing.T) {
 	}
 	if !strings.Contains(m.View(), "mindestens eine Staffel") {
 		t.Errorf("the hint must be visible:\n%s", m.View())
+	}
+}
+
+// The library check must call the check of the application and report the
+// result.
+func TestCheckLibraryCallsTheApplication(t *testing.T) {
+	var called int
+	check := func(context.Context) ([]app.CheckResult, error) {
+		called++
+		return []app.CheckResult{
+			{Series: store.Series{ID: 1, Title: "Serie A"}, New: []store.EpisodeRef{{ID: "e1"}}},
+		}, nil
+	}
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun, Check: check})
+
+	cmd := m.checkLibrary()
+	if cmd == nil {
+		t.Fatal("checkLibrary must start the check")
+	}
+	if !m.checking {
+		t.Error("the model must show that the check is running")
+	}
+	m = runCommands(t, m, cmd)
+	if called != 1 {
+		t.Errorf("the check was called %d times, want 1", called)
+	}
+	if m.checking {
+		t.Error("the check must be finished")
+	}
+	if !strings.Contains(m.libMessage, "1 neue Folge(n)") {
+		t.Errorf("libMessage = %q, want the result of the check", m.libMessage)
+	}
+}
+
+// Without a check function the model does nothing.
+func TestCheckLibraryWithoutACheckFunction(t *testing.T) {
+	m := newModel(Options{Config: &config.Options{}, Run: noopRun})
+	if cmd := m.checkLibrary(); cmd != nil {
+		t.Error("checkLibrary must do nothing without a check function")
 	}
 }

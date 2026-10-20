@@ -27,12 +27,6 @@ type Pipeline struct {
 	Logf     func(format string, args ...any)
 }
 
-func (p *Pipeline) logf(format string, args ...any) {
-	if p.Logf != nil {
-		p.Logf(format, args...)
-	}
-}
-
 func (p *Pipeline) httpClient() *http.Client {
 	if p.HTTP != nil {
 		return p.HTTP

@@ -132,9 +132,11 @@ func TestCheckEntryExpandsTatortHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SeriesList: %v", err)
 	}
+	// The library stores the canonical ARD Plus URL, not the address of the
+	// server the test happens to use.
 	want := map[string]string{
-		h.app.API.CategoryPageURL("tatort-koeln"):    "Tatort Köln",
-		h.app.API.CategoryPageURL("tatort-muenster"): "Tatort Münster",
+		categoryURL("tatort-koeln"):    "Tatort Köln",
+		categoryURL("tatort-muenster"): "Tatort Münster",
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("entries = %+v, want %d", entries, len(want))

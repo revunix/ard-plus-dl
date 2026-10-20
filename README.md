@@ -157,6 +157,8 @@ Tatort: Tatort.Bremen.Folge.1200.2024.German.AAC.1080p.Web-DL.x264-<tag>.mp4
 
 Staffelverzeichnisse werden wiederverwendet: Existiert bereits ein Verzeichnis `Show.S01.*`, landet die neue Folge dort. Staffeln mit 100 oder mehr Episoden werden dreistellig nummeriert (`S21E001`).
 
+Ein Eintrag der Bibliothek kann einen **eigenen Datei-Tag** tragen. Er hat Vorrang vor dem globalen Tag aus `ARD_PLUS_TAG` und wird beim Download dieser Serie verwendet. Ein ungültiger Tag wird ignoriert, der Lauf bricht dafür nicht ab.
+
 ### Diagnose
 
 Bei CDN-Fehlern (`HTTP 403`) schreibt `ARD_PLUS_DEBUG_DIR` die Rohdaten des letzten Laufs mit:
@@ -168,6 +170,8 @@ ARD_PLUS_DEBUG_DIR="$PWD/debug" ard-plus-dl 'https://www.ardplus.de/details/...'
 - `manifest.mpd` - die geladene DASH-Beschreibung
 - `tracks.txt` - was das Manifest anbietet und was ausgewählt wurde
 - `requests.log` - jede Medien-Anfrage mit Statuszeile; Query-Werte sind durch `…` ersetzt, Tokens landen nicht im Log
+
+Das Verzeichnis wird bei Bedarf angelegt. Ist es nicht schreibbar, läuft der Download ohne Diagnose weiter.
 
 ### Batch-Modus
 
@@ -198,8 +202,11 @@ Im Image sind `ffmpeg` und `ffprobe` (Alpine-Paket) enthalten. Fertige Multi-Arc
 
 ```bash
 go vet ./...
-go test ./... -count=1
+go test ./... -count=1 -race
+golangci-lint run ./...
 ```
+
+Der Linter läuft mit der Konfiguration in `.golangci.yml`; die Regeln sind bewusst knapp gewählt, damit jedes Finding eine echte Änderung und kein Rauschen ist.
 
 Die End-to-End-Prüfung `TestEndToEndNativeDash` erzeugt mit ffmpeg einen echten DASH-Stream, lädt ihn über einen lokalen HTTP-Server und prüft Dateiname und Stream-Inventar des Ergebnisses.
 
@@ -213,6 +220,8 @@ git push origin v1.2.3
 Die Version wird als `main.version` eingebettet und ist über `ard-plus-dl --version` sichtbar.
 
 Aufbau: `internal/media` (Benennung, ffprobe-Tags), `internal/config` (CLI, Zugangsdaten, Pfade), `internal/auth` (Login, Token), `internal/ardplus` (GraphQL, Wiedergabe-Autorisierung), `internal/dash` (MPD, Auswahl, Segmente, Muxing), `internal/download` (Skip/Finalisierung), `internal/app` (Abläufe), `internal/tui` (Bubble Tea), `internal/cli` (headless Einstieg).
+
+Die Continuous-Integration in `.github/workflows/ci.yml` läuft bei jedem Push auf `main` und bei jedem Pull Request: `go vet`, die Tests mit dem Race-Detector, der Linter, ein Build für alle sechs Zielplattformen und ein Docker-Image ohne Push. Die Releases entstehen weiterhin über `release.yml` bei einem Tag.
 
 ## Lizenz
 

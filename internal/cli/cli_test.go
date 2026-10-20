@@ -12,6 +12,7 @@ import (
 
 	"github.com/revunix/ard-plus-dl/internal/app"
 	"github.com/revunix/ard-plus-dl/internal/config"
+	"github.com/revunix/ard-plus-dl/internal/store"
 )
 
 // cliEnv is an isolated HOME/XDG environment plus a temp downloads directory.
@@ -549,5 +550,167 @@ func TestHeadlessSelectCategoriesReportsTheCancellation(t *testing.T) {
 	_, err := ui.SelectCategories(ctx, "Tatort-Archiv", []app.Category{{Slug: "tatort-koeln", Title: "Köln"}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("SelectCategories error = %v, want context.Canceled", err)
+	}
+}
+
+func TestHeadlessSelectSeasonsReadsTheAnswer(t *testing.T) {
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader("2\n"), interactive: true}
+	seasons := []app.Season{
+		{Number: 1, Title: "Staffel 1"},
+		{Number: 2, Title: "Staffel 2"},
+		{Number: 3, Title: "Staffel 3"},
+	}
+	selected, err := ui.SelectSeasons(context.Background(), "Test Show", seasons)
+	if err != nil {
+		t.Fatalf("SelectSeasons: %v", err)
+	}
+	if len(selected) != 1 || selected[0] != 2 {
+		t.Fatalf("selected = %v, want [2]", selected)
+	}
+}
+
+func TestHeadlessSelectSeasonsAcceptsSeveralNumbers(t *testing.T) {
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader("1, 3\n"), interactive: true}
+	seasons := []app.Season{{Number: 1}, {Number: 2}, {Number: 3}}
+	selected, err := ui.SelectSeasons(context.Background(), "Test Show", seasons)
+	if err != nil {
+		t.Fatalf("SelectSeasons: %v", err)
+	}
+	if len(selected) != 2 || selected[0] != 1 || selected[1] != 3 {
+		t.Fatalf("selected = %v, want [1 3]", selected)
+	}
+}
+
+func TestHeadlessSelectSeasonsRefusesAnUnknownNumber(t *testing.T) {
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader("9\n2\n"), interactive: true}
+	seasons := []app.Season{{Number: 1}, {Number: 2}}
+	selected, err := ui.SelectSeasons(context.Background(), "Test Show", seasons)
+	if err != nil {
+		t.Fatalf("SelectSeasons: %v", err)
+	}
+	if len(selected) != 1 || selected[0] != 2 {
+		t.Fatalf("selected = %v, want [2]", selected)
+	}
+}
+
+func TestHeadlessSelectSeasonsNeedsATerminal(t *testing.T) {
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader("1\n"), interactive: false}
+	if _, err := ui.SelectSeasons(context.Background(), "Test Show", []app.Season{{Number: 1}}); err == nil {
+		t.Fatal("SelectSeasons must fail without a terminal")
+	}
+}
+
+func TestHeadlessSelectCategoriesReadsTheAnswer(t *testing.T) {
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader("2\n"), interactive: true}
+	categories := []app.Category{
+		{Slug: "tatort-koeln", Title: "Köln"},
+		{Slug: "tatort-muenster", Title: "Münster"},
+	}
+	slugs, err := ui.SelectCategories(context.Background(), "Tatort-Archiv", categories)
+	if err != nil {
+		t.Fatalf("SelectCategories: %v", err)
+	}
+	if len(slugs) != 1 || slugs[0] != "tatort-muenster" {
+		t.Fatalf("slugs = %v, want [tatort-muenster]", slugs)
+	}
+}
+
+func TestHeadlessSelectCategoriesTakesAll(t *testing.T) {
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader("alle\n"), interactive: true}
+	categories := []app.Category{
+		{Slug: "tatort-koeln", Title: "Köln"},
+		{Slug: "tatort-muenster", Title: "Münster"},
+	}
+	slugs, err := ui.SelectCategories(context.Background(), "Tatort-Archiv", categories)
+	if err != nil {
+		t.Fatalf("SelectCategories: %v", err)
+	}
+	if len(slugs) != 2 {
+		t.Fatalf("slugs = %v, want both categories", slugs)
+	}
+}
+
+func TestHeadlessAskTatortSkipReadsTheAnswer(t *testing.T) {
+	ui := &headlessUI{out: io.Discard, in: strings.NewReader("4\n"), interactive: true}
+	skip, err := ui.AskTatortSkip(context.Background(), "Köln", 12)
+	if err != nil {
+		t.Fatalf("AskTatortSkip: %v", err)
+	}
+	if skip != 4 {
+		t.Fatalf("skip = %d, want 4", skip)
+	}
+}
+
+func TestParseSeasonNumber(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+		ok   bool
+	}{
+		{"0", 0, true},
+		{"12", 12, true},
+		{"", 0, false},
+		{"a", 0, false},
+		{"1a", 0, false},
+		{"-1", 0, false},
+	}
+	for _, tc := range cases {
+		got, err := parseSeasonNumber(tc.in)
+		if tc.ok && err != nil {
+			t.Errorf("parseSeasonNumber(%q) = %v, want no error", tc.in, err)
+		}
+		if !tc.ok && err == nil {
+			t.Errorf("parseSeasonNumber(%q) = %d, want an error", tc.in, got)
+		}
+		if tc.ok && got != tc.want {
+			t.Errorf("parseSeasonNumber(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestHasSeason(t *testing.T) {
+	seasons := []app.Season{{Number: 1}, {Number: 3}}
+	if !hasSeason(seasons, 3) {
+		t.Error("hasSeason(3) must be true")
+	}
+	if hasSeason(seasons, 2) {
+		t.Error("hasSeason(2) must be false")
+	}
+}
+
+func TestPrintCheckResultsCountsTheNewEpisodes(t *testing.T) {
+	var out bytes.Buffer
+	results := []app.CheckResult{
+		{Series: store.Series{URL: "https://www.ardplus.de/details/a"}, Title: "Serie A", Kind: store.KindSeries,
+			New: []store.EpisodeRef{{ID: "e1"}}, Total: 3},
+		{Series: store.Series{URL: "https://www.ardplus.de/details/b"}, Title: "Film B", Kind: store.KindMovie},
+		{Series: store.Series{URL: "https://www.ardplus.de/details/c"}, Title: "Serie C", Err: errors.New("kaputt")},
+	}
+	if failed := printCheckResults(&out, results); !failed {
+		t.Error("a failed check must be reported")
+	}
+	text := out.String()
+	if !strings.Contains(text, "Serie A: 1 neue Folge(n), 3 insgesamt") {
+		t.Errorf("missing the count of the series:\n%s", text)
+	}
+	if !strings.Contains(text, "Film B: Film") {
+		t.Errorf("missing the movie line:\n%s", text)
+	}
+	if !strings.Contains(text, "Serie C: Fehler: kaputt") {
+		t.Errorf("missing the error line:\n%s", text)
+	}
+	if !strings.Contains(text, "3 Serie(n) geprüft, 1 neue Folge(n).") {
+		t.Errorf("missing the summary:\n%s", text)
+	}
+}
+
+func TestDisplayTitleFallsBackToTheURL(t *testing.T) {
+	result := app.CheckResult{Series: store.Series{URL: "https://www.ardplus.de/details/a"}}
+	if got := displayTitle(result); got != "https://www.ardplus.de/details/a" {
+		t.Fatalf("displayTitle = %q, want the URL", got)
+	}
+	result.Title = "Serie A"
+	if got := displayTitle(result); got != "Serie A" {
+		t.Fatalf("displayTitle = %q, want the title", got)
 	}
 }

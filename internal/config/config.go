@@ -56,7 +56,6 @@ type Options struct {
 	TokenFile       string
 	CredentialsFile string
 	WorkDir         string
-	LogsDir         string
 }
 
 // Batch reports whether the options select the links-file mode.

@@ -69,7 +69,7 @@ func (m *Muxer) Mux(ctx context.Context, workDir string, tracks []DownloadedTrac
 	// a muxer for "*.mp4.tmp".
 	tmp := out + ".tmp.mp4"
 	args := buildMuxArgs(inputs, kinds, langs, tmp)
-	stderr, err := m.run(ctx, args)
+	_, err := m.run(ctx, args)
 	if err != nil {
 		// Some codec combinations cannot be copied into MP4; transcode the
 		// audio and try once more before giving up.
@@ -84,13 +84,15 @@ func (m *Muxer) Mux(ctx context.Context, workDir string, tracks []DownloadedTrac
 		output := args[len(args)-1]
 		args = append(args[:len(args)-1], "-b:a", "192k", output)
 		m.logf("WARNUNG: Muxen mit Copy fehlgeschlagen, neuer Versuch mit AAC-Audio")
-		stderr, err = m.run(ctx, args)
+		stderr, err := m.run(ctx, args)
 		if err != nil {
 			_ = os.Remove(tmp)
 			return fmt.Errorf("ffmpeg mux failed: %w (%s)", err, tailLines(stderr, 20))
 		}
 	}
 	if err := os.Rename(tmp, target); err != nil {
+		// The finished file stays behind, so the next run can use it.
+		_ = os.Remove(tmp)
 		return err
 	}
 	return nil

@@ -838,3 +838,44 @@ func TestRemoveSeries(t *testing.T) {
 		}
 	})
 }
+
+func TestEpisodesListsEveryEpisode(t *testing.T) {
+	s, id := seedSeriesWithEpisodes(t)
+	episodes, err := s.Episodes(id)
+	if err != nil {
+		t.Fatalf("Episodes: %v", err)
+	}
+	if got, want := knownEpisodeIDs(episodes), []string{"s2e3", "s2e1", "s1e2", "s1e1"}; !slices.Equal(got, want) {
+		t.Errorf("episodes = %v, want %v", got, want)
+	}
+	for _, episode := range episodes {
+		if episode.Title == "" {
+			t.Errorf("episode %s has no title", episode.ID)
+		}
+		if episode.FirstSeen.IsZero() {
+			t.Errorf("episode %s has zero FirstSeen", episode.ID)
+		}
+	}
+}
+
+func TestSetSeriesTagAndSkip(t *testing.T) {
+	s := newStore(t)
+	id := addSeries(t, s, "https://www.ardplus.de/details/show")
+
+	if err := s.SetSeriesTag(id, "serie"); err != nil {
+		t.Fatalf("SetSeriesTag: %v", err)
+	}
+	if err := s.SetSeriesSkip(id, 3); err != nil {
+		t.Fatalf("SetSeriesSkip: %v", err)
+	}
+	entry, err := s.SeriesByURL("https://www.ardplus.de/details/show")
+	if err != nil || entry == nil {
+		t.Fatalf("SeriesByURL: %+v (%v)", entry, err)
+	}
+	if entry.Tag != "serie" {
+		t.Errorf("tag = %q, want serie", entry.Tag)
+	}
+	if entry.Skip != 3 {
+		t.Errorf("skip = %d, want 3", entry.Skip)
+	}
+}

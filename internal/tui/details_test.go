@@ -310,7 +310,8 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("single selected episode download did not start")
 	}
-	model = runCommands(t, model, cmd)
+	// The commands are executed, but the model state is not needed here.
+	runCommands(t, model, cmd)
 	if len(downloads) != 3 || len(downloads[2]) != 1 || downloads[2][0] != "s2e2" {
 		t.Fatalf("single episode IDs = %v, want [s2e2]", downloads)
 	}

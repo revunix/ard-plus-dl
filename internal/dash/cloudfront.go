@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-// CloudFront carries a custom policy in the CloudFront-Policy parameter using
-// its own base64 alphabet: '+' becomes '-', '/' becomes '_' and '=' becomes '~'.
-const cloudFrontCookieKeys = "CloudFront-Policy; CloudFront-Signature; CloudFront-Key-Pair-Id"
-
 // queryValue returns one raw parameter without decoding it: signatures must
 // stay byte-identical.
 func queryValue(rawQuery, key string) string {
