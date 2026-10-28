@@ -128,7 +128,7 @@ func TestShots(t *testing.T) {
 	splash := shotModel()
 	splash.screen = ScreenSplash
 	splash.splashTarget = ScreenLibrary
-	splash.version = "1.4.0"
+	splash.version = "1.3.0"
 	splash.busy = true
 	write("splash", splash)
 }
@@ -139,7 +139,7 @@ func timePtr(value time.Time) *time.Time {
 
 // shotModel builds a model with the given size.
 func shotModel() *Model {
-	model := newModel(Options{Config: &config.Options{DownloadsDir: "/Users/ard/Downloads/ARD Plus"}, Version: "1.4.0"})
+	model := newModel(Options{Config: &config.Options{DownloadsDir: "/Users/ard/Downloads/ARD Plus"}, Version: "1.3.0"})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 112, Height: 34})
 	shot := updated.(*Model)
 	shot.library = shotLibrary()
