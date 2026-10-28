@@ -137,7 +137,7 @@ func TestStoreCmdSetEnabledReloadsLibrary(t *testing.T) {
 	state := newStoreCmdTestStore(t)
 	entry := storeCmdTestEntry(t, state, "https://www.ardplus.de/details/alpha", "Alpha", store.KindSeries)
 	model := newModel(Options{Config: &config.Options{}, Store: state})
-	model.pendingRemoval = entry.ID
+	model.confirm = &confirmPrompt{kind: confirmRemoveEntry, entry: entry}
 
 	cmd := model.setEnabledCmd(entry, false)
 	if cmd == nil {
@@ -157,8 +157,8 @@ func TestStoreCmdSetEnabledReloadsLibrary(t *testing.T) {
 	if reload == nil {
 		t.Fatal("a store action must reload the library")
 	}
-	if model.pendingRemoval != 0 {
-		t.Fatalf("pendingRemoval = %d, want 0", model.pendingRemoval)
+	if model.confirm != nil {
+		t.Fatalf("the confirmation window is still open after the action")
 	}
 	model, _ = update(t, model, reload())
 	if len(model.library) != 1 || model.library[0].Enabled {
@@ -170,7 +170,7 @@ func TestStoreCmdRemoveSeriesReloadsLibrary(t *testing.T) {
 	state := newStoreCmdTestStore(t)
 	entry := storeCmdTestEntry(t, state, "https://www.ardplus.de/details/alpha", "Alpha", store.KindSeries)
 	model := newModel(Options{Config: &config.Options{}, Store: state})
-	model.pendingRemoval = entry.ID
+	model.confirm = &confirmPrompt{kind: confirmRemoveEntry, entry: entry}
 
 	cmd := model.removeSeriesCmd(entry)
 	if cmd == nil {

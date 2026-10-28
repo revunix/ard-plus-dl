@@ -189,12 +189,13 @@ type Model struct {
 	// screen.
 	selectionErr string
 
-	library        []store.Series
-	libCursor      int
-	libOffset      int
-	libMessage     string
-	checking       bool
-	pendingRemoval int64
+	library    []store.Series
+	libCursor  int
+	libOffset  int
+	libMessage string
+	checking   bool
+	// confirm is the open confirmation window; nil when none is open.
+	confirm *confirmPrompt
 	// pendingRemovalFile waits for the second x that deletes a file.
 	pendingRemovalFile bool
 	// libSelected holds the marked entries of the library.

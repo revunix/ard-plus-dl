@@ -31,6 +31,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if m.confirm != nil {
+		// The window takes every key until it is answered.
+		return m.handleConfirmKey(msg)
+	}
+
 	if key == "?" {
 		m.helpVisible = !m.helpVisible
 		return m, nil
@@ -305,9 +310,6 @@ func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	if key != "x" && key != "r" {
-		m.pendingRemoval = 0
-	}
 	if m.searching {
 		return m.handleSearchKey(msg)
 	}
@@ -431,34 +433,20 @@ func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !ok {
 			return m, nil
 		}
-		if m.pendingRemoval != entry.ID {
-			m.pendingRemoval = entry.ID
-			m.libMessage = entryTitle(entry) + ": r erneut drücken, um Dateien und Verlauf zu löschen."
-			return m, nil
-		}
-		m.pendingRemoval = 0
-		return m, m.resetEntryCmd(entry)
+		m.askResetEntry(entry)
+		return m, nil
 	case "x":
 		entry, ok := m.libraryEntry()
 		if !ok || m.store == nil {
 			return m, nil
 		}
-		marked := m.markedEntries()
-		if len(marked) > 0 {
+		if marked := m.markedEntries(); len(marked) > 0 {
 			// The marked entries are removed together.
-			if m.pendingRemoval != entry.ID {
-				m.pendingRemoval = entry.ID
-				m.libMessage = fmt.Sprintf("%d markierte Einträge: x erneut drücken zum Entfernen.", len(marked))
-				return m, nil
-			}
-			return m, m.removeMarkedCmd(marked)
-		}
-		if m.pendingRemoval != entry.ID {
-			m.pendingRemoval = entry.ID
-			m.libMessage = entryTitle(entry) + ": x erneut drücken zum Entfernen."
+			m.askRemoveMarked(marked)
 			return m, nil
 		}
-		return m, m.removeSeriesCmd(entry)
+		m.askRemoveEntry(entry)
+		return m, nil
 	}
 	return m, nil
 }

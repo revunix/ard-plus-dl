@@ -744,7 +744,7 @@ func TestSeriesFlowEpisodeFailureIsolation(t *testing.T) {
 	if len(files) != 2 {
 		t.Fatalf("mp4 files = %v, want the two successful episodes", files)
 	}
-	seasonDir := "Test.Show.S01." + harnessMediaTag 
+	seasonDir := "Test.Show.S01." + harnessMediaTag
 	for _, name := range []string{
 		filepath.Join(h.downloads, seasonDir, "Test.Show.S01E01."+harnessMediaTag+".mp4"),
 		filepath.Join(h.downloads, seasonDir, "Test.Show.S01E03."+harnessMediaTag+".mp4"),
@@ -814,7 +814,7 @@ func TestSeriesSkipExistingEpisodeEmitsSkippedEvent(t *testing.T) {
 	}))
 
 	// The finished output of the first episode makes Prepare report a skip.
-	seasonDir := "Test.Show.S01." + harnessMediaTag 
+	seasonDir := "Test.Show.S01." + harnessMediaTag
 	final := filepath.Join(h.downloads, seasonDir, "Test.Show.S01E01."+harnessMediaTag+".mp4")
 	if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
 		t.Fatal(err)
@@ -854,7 +854,7 @@ func TestSeriesEpisodeNumberPadding(t *testing.T) {
 	if err := h.run(); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	seasonDir := "Test.Show.S01." + harnessMediaTag 
+	seasonDir := "Test.Show.S01." + harnessMediaTag
 	for _, name := range []string{"Test.Show.S01E001", "Test.Show.S01E100"} {
 		path := filepath.Join(h.downloads, seasonDir, name+"."+harnessMediaTag+".mp4")
 		if _, err := os.Stat(path); err != nil {

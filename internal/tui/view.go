@@ -23,6 +23,10 @@ func (m *Model) View() string {
 		return fitLine(centerLine("Terminal zu klein (mindestens 40x12).", m.width), m.width)
 	}
 	page := m.pageView()
+	if m.confirm != nil {
+		// The confirmation window sits above everything else.
+		return strings.Join(overlay(page, m.confirmView()), "\n")
+	}
 	if m.helpVisible {
 		// The help floats over the page instead of replacing it.
 		page = overlay(page, m.helpPopup())

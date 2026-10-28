@@ -481,7 +481,7 @@ func TestEpisodeSelectionFallsBackToOpenEpisodes(t *testing.T) {
 	}
 }
 
-func TestLibraryRemovalNeedsConfirmation(t *testing.T) {
+func TestLibraryRemovalOpensConfirmation(t *testing.T) {
 	state, err := store.Open(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -498,22 +498,34 @@ func TestLibraryRemovalNeedsConfirmation(t *testing.T) {
 
 	model, cmd := update(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	if cmd != nil {
-		t.Fatal("the first x must only ask for confirmation")
+		t.Fatal("x must only open the confirmation window")
 	}
-	if model.pendingRemoval != id {
-		t.Errorf("pendingRemoval = %d, want %d", model.pendingRemoval, id)
+	if model.confirm == nil || model.confirm.kind != confirmRemoveEntry || model.confirm.entry.ID != id {
+		t.Fatalf("confirm = %#v, want the removal of the entry", model.confirm)
+	}
+	if !strings.Contains(model.View(), "Eintrag entfernen") {
+		t.Fatalf("the view misses the confirmation window:\n%s", model.View())
 	}
 	entries, err := state.SeriesList()
 	if err != nil {
 		t.Fatalf("list series: %v", err)
 	}
 	if len(entries) != 1 {
-		t.Fatalf("the first x removed the entry; library has %d entries", len(entries))
+		t.Fatalf("x removed the entry; library has %d entries", len(entries))
 	}
 
-	model, cmd = update(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model, cmd = update(t, model, tea.KeyMsg{Type: tea.KeyEscape})
+	if cmd != nil {
+		t.Fatal("esc must not remove anything")
+	}
+	if model.confirm != nil {
+		t.Fatal("esc did not close the confirmation window")
+	}
+
+	model, _ = update(t, model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model, cmd = update(t, model, tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("the second x must return a removal command")
+		t.Fatal("enter in the confirmation window must return the removal command")
 	}
 	model = runCommands(t, model, cmd)
 	entries, err = state.SeriesList()
@@ -521,10 +533,10 @@ func TestLibraryRemovalNeedsConfirmation(t *testing.T) {
 		t.Fatalf("list series: %v", err)
 	}
 	if len(entries) != 0 {
-		t.Fatalf("the second x did not remove the entry; library has %d entries", len(entries))
+		t.Fatalf("the confirmed removal left %d entries", len(entries))
 	}
-	if model.pendingRemoval != 0 {
-		t.Errorf("pendingRemoval = %d, want it cleared after removal", model.pendingRemoval)
+	if model.confirm != nil {
+		t.Errorf("the window is still open after the removal")
 	}
 }
 

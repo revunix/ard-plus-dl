@@ -71,15 +71,18 @@ func TestLibraryMarksEntries(t *testing.T) {
 	// x asks for a confirmation first.
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	model = updated.(*Model)
-	if !strings.Contains(model.libMessage, "erneut drücken") {
-		t.Fatalf("message = %q, want the confirmation", model.libMessage)
+	if model.confirm == nil || model.confirm.kind != confirmRemoveMarked {
+		t.Fatalf("confirm = %#v, want the removal of the marked entries", model.confirm)
+	}
+	if !strings.Contains(model.View(), "2 Einträge entfernen") {
+		t.Fatalf("the view misses the confirmation window:\n%s", model.View())
 	}
 	if len(model.library) != 3 {
 		t.Fatalf("the entries were removed without a confirmation")
 	}
 
-	// The second x removes the marked entries.
-	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	// enter removes the marked entries.
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(*Model)
 	if cmd == nil {
 		t.Fatal("removing the marked entries must return a command")

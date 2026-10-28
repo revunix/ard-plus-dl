@@ -206,6 +206,12 @@ const windowPadding = 2
 // key that closes the window on the right. Half blocks give the window sharp
 // edges. The width includes the padding on both sides.
 func renderPopup(width int, title string, lines []string) []string {
+	return renderWindow(width, title, "esc", lines)
+}
+
+// renderWindow draws the floating window and names the key that closes it in
+// the upper right corner; an empty close leaves the corner free.
+func renderWindow(width int, title, close string, lines []string) []string {
 	inner := 0
 	for _, line := range lines {
 		inner = max(inner, ansi.StringWidth(line))
@@ -221,7 +227,8 @@ func renderPopup(width int, title string, lines []string) []string {
 		return onSurface(pad+text+pad, theme.Popup)
 	}
 	label := fitToWidth(theme.Title.Render(title), max(1, inner-5))
-	body := []string{row(label + strings.Repeat(" ", max(1, inner-ansi.StringWidth(label)-3)) + theme.Subtle.Render("esc"))}
+	gap := max(1, inner-ansi.StringWidth(label)-ansi.StringWidth(close))
+	body := []string{row(label + strings.Repeat(" ", gap) + theme.Subtle.Render(close))}
 	body = append(body, row(""))
 	for _, line := range lines {
 		body = append(body, row(line))

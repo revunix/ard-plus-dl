@@ -92,6 +92,14 @@ func TestShots(t *testing.T) {
 	episodes.detailChoice = map[int]bool{1: true}
 	write("episodes", episodes)
 
+	// The confirmation window before an entry leaves the library.
+	confirm := shotModel()
+	confirm.screen = ScreenLibrary
+	confirm.library = library.library
+	confirm.libCursor = 0
+	confirm.askRemoveEntry(confirm.library[0])
+	write("library-confirm", confirm)
+
 	// The settings of a series.
 	settings := shotModel()
 	settings.screen = ScreenEditEntry

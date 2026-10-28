@@ -878,8 +878,8 @@ func TestBusyBlocksConflictingKeys(t *testing.T) {
 		if next.toast != "Bitte warten, eine Aktion läuft noch." {
 			t.Errorf("%q toast = %q, want the busy hint", key.String(), next.toast)
 		}
-		if next.pendingRemoval != 0 {
-			t.Errorf("%q started a removal while busy", key.String())
+		if next.confirm != nil {
+			t.Errorf("%q opened a confirmation window while busy", key.String())
 		}
 	}
 }

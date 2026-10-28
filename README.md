@@ -27,6 +27,10 @@ Ein einzelnes Go-Binary für Linux, Windows und macOS mit interaktiver Terminal-
 |----------------------|------------|
 | ![Katalog mit Angaben zum markierten Titel](docs/screenshots/v2/catalog.png) | ![Bibliothek mit Details der markierten Serie](docs/screenshots/v2/library.png) |
 
+| Entfernen mit Rückfrage | |
+|-------------------------|-|
+| ![Fenster, das vor dem Entfernen eines Eintrags fragt](docs/screenshots/v2/library-confirm.png) | |
+
 | Downloads | |
 |-----------|-|
 | ![Queue mit Fortschritt und Aktivitätsprotokoll](docs/screenshots/v2/downloads.png) | |
@@ -114,11 +118,11 @@ Die Fußzeile zeigt nur die wichtigsten Tasten des aktuellen Bildschirms. `?` bl
 2. **Bibliothek** (`tab` aus dem Katalog) - die aufgenommenen Serien und Filme mit Anzahl neuer Folgen
    - `enter` öffnet den Eintrag und aktualisiert Staffeln/Folgen; `d` lädt neue Folgen und öffnet die Download-Ansicht, `n` prüft alle Einträge
    - `/` sucht in der Bibliothek (Titel oder URL), `esc` löscht den Filter
-   - `m` markiert Einträge; markierte Einträge lassen sich gemeinsam entfernen (`x`, zweimal drücken)
+   - `m` markiert Einträge; markierte Einträge lassen sich gemeinsam entfernen (`x`)
    - `r` setzt die markierte Serie zurück: die heruntergeladenen Dateien werden gelöscht und der Verlauf geleert, sodass alle Folgen wieder angeboten werden
    - `e` öffnet die Einstellungen der markierten Serie: die Anzahl der zu überspringenden Episoden (`0` oder `1` überspringt keine)
    - `y` kopiert die URL in die Zwischenablage
-   - `space` aktivieren/deaktivieren, `x` entfernt nach erneutem Druck (zweistufige Sicherheitsabfrage in der Statuszeile)
+   - `space` aktivieren/deaktivieren, `x` entfernt den Eintrag nach einer Rückfrage in einem Fenster: `enter` bestätigt, `esc` bricht ab. `r` fragt genauso nach, bevor es Dateien löscht
    - `pgup`/`pgdown` blättern, `home`/`end` springen an den Anfang bzw. ans Ende
    - `tab`, `esc` oder `a` führen in den Katalog, `s` Einstellungen (Benutzer, Passwort, Erscheinungsbild), `q` beenden
 3. **Seriendetails** - Staffeln mit Folgenzahl und offenen Folgen

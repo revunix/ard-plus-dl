@@ -246,7 +246,7 @@ func (m *Model) handleStoreActionMsg(typed storeActionMsg) (tea.Model, tea.Cmd) 
 		return m, nil
 	}
 	m.setToast(typed.message, toastSuccess)
-	m.pendingRemoval = 0
+	m.confirm = nil
 	if m.screen == ScreenEditEntry {
 		// The settings are saved, the library takes over again.
 		m.screen = ScreenLibrary

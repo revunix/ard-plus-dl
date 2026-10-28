@@ -143,17 +143,20 @@ func TestResettingAnEntryClearsFilesAndHistory(t *testing.T) {
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 	model = updated.(*Model)
 	if cmd != nil {
-		t.Fatal("the first r must only ask for a confirmation")
+		t.Fatal("r must only open the confirmation window")
 	}
-	if !strings.Contains(model.libMessage, "erneut drücken") {
-		t.Fatalf("message = %q, want the confirmation", model.libMessage)
+	if model.confirm == nil || model.confirm.kind != confirmResetEntry {
+		t.Fatalf("confirm = %#v, want the reset of the series", model.confirm)
+	}
+	if !strings.Contains(model.View(), "Serie zurücksetzen") {
+		t.Fatalf("the view misses the confirmation window:\n%s", model.View())
 	}
 
-	// The second r resets the series.
-	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	// enter resets the series.
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(*Model)
 	if cmd == nil {
-		t.Fatal("the second r must reset the series")
+		t.Fatal("the confirmation must reset the series")
 	}
 	runCommands(t, model, cmd)
 	if _, err := os.Stat(file); !os.IsNotExist(err) {
