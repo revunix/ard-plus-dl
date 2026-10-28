@@ -19,7 +19,7 @@ import (
 // database, so the library methods can be exercised end to end.
 func newLibraryHarness(t *testing.T) (*harness, *store.Store) {
 	t.Helper()
-	opts := &config.Options{Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	state, err := store.Open(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
@@ -502,7 +502,7 @@ func TestDownloadNewMarksExistingFileDone(t *testing.T) {
 	if err := os.MkdirAll(seasonDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	existing := filepath.Join(seasonDir, "Test.Show.S01E01."+harnessMediaTag+"-example.mp4")
+	existing := filepath.Join(seasonDir, "Test.Show.S01E01."+harnessMediaTag+".mp4")
 	if err := os.WriteFile(existing, []byte("already here"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -688,55 +688,24 @@ func TestRememberStoresURLAndMetadata(t *testing.T) {
 	}
 }
 
-// A series can carry its own Datei-Tag, which overrides the global one.
-func TestDownloadNewUsesThePerSeriesTag(t *testing.T) {
+// The files of a series carry the name of the episode and the media tag,
+// nothing behind it.
+func TestDownloadNewNamesTheFilesAfterTheMedia(t *testing.T) {
 	h, state := newLibraryHarness(t)
 	const url = "https://www.ardplus.de/details/s1-show"
 	entry := seedLibrary(t, state, url,
 		store.EpisodeRef{ID: "e1", Title: "Folge Eins", Season: 1, Number: 1},
 	)
-	if err := state.SetSeriesTag(entry.ID, "serie"); err != nil {
-		t.Fatalf("SetSeriesTag: %v", err)
-	}
 	entry = libraryEntry(t, state, url)
 	h.backend.setGraphQL(downloadFixture().handler())
 
 	if err := h.app.DownloadNew(context.Background(), entry); err != nil {
 		t.Fatalf("DownloadNew: %v", err)
 	}
-
-	matches, err := filepath.Glob(filepath.Join(h.downloads, "Test.Show.S01.*-serie", "*-serie.mp4"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) != 1 {
-		t.Fatalf("files with the series tag = %v, want exactly one", matches)
-	}
-}
-
-// An invalid tag in the library must not stop the run: the global tag is
-// used instead.
-func TestDownloadNewIgnoresAnInvalidPerSeriesTag(t *testing.T) {
-	h, state := newLibraryHarness(t)
-	const url = "https://www.ardplus.de/details/s1-show"
-	entry := seedLibrary(t, state, url,
-		store.EpisodeRef{ID: "e1", Title: "Folge Eins", Season: 1, Number: 1},
-	)
-	if err := state.SetSeriesTag(entry.ID, "ungültig/../x"); err != nil {
-		t.Fatalf("SetSeriesTag: %v", err)
-	}
-	entry = libraryEntry(t, state, url)
-	h.backend.setGraphQL(downloadFixture().handler())
-
-	if err := h.app.DownloadNew(context.Background(), entry); err != nil {
-		t.Fatalf("DownloadNew: %v", err)
-	}
-	matches, err := filepath.Glob(filepath.Join(h.downloads, "Test.Show.S01.*-example", "*-example.mp4"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) != 1 {
-		t.Fatalf("files with the global tag = %v, want exactly one", matches)
+	want := filepath.Join(h.downloads, "Test.Show.S01."+harnessMediaTag, "Test.Show.S01E01."+harnessMediaTag+".mp4")
+	if _, err := os.Stat(want); err != nil {
+		matches, _ := filepath.Glob(filepath.Join(h.downloads, "*", "*.mp4"))
+		t.Fatalf("file %s missing (%v), found %v", want, err, matches)
 	}
 }
 

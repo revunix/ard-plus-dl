@@ -22,12 +22,12 @@ import (
 // panic in the layout code fails a test.
 func TestViewsRender(t *testing.T) {
 	noop := func(context.Context) error { return nil }
-	cfg := &config.Options{FileTag: "example"}
+	cfg := &config.Options{}
 
 	t.Run("start", func(t *testing.T) {
 		model := newModel(Options{Config: cfg, StartScreen: true, NeedsLogin: true, Run: noop})
 		view := model.View()
-		for _, want := range []string{"Start", "URL", "Benutzer", "Passwort", "Datei-Tag", "starten", "▸"} {
+		for _, want := range []string{"Start", "URL", "Benutzer", "Passwort", "starten", "▌"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("start view misses %q:\n%s", want, view)
 			}
@@ -46,7 +46,7 @@ func TestViewsRender(t *testing.T) {
 			Reply: reply,
 		})
 		view := updated.(*Model).View()
-		for _, want := range []string{"Test Show", "Staffel 1", "Staffel 2", "[x]", "▸", "wählen"} {
+		for _, want := range []string{"Test Show", "Staffel 1", "Staffel 2", "[x]", "▌", "wählen"} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("series view misses %q:\n%s", want, view)
 			}
@@ -95,7 +95,7 @@ func TestDownloadQueueStacksFullWidth(t *testing.T) {
 	longPath := "/downloads/Tatort Duisburg/Der Fall Horst Schimanski/der-sehr-lange-dateiname-fuer-den-test.mp4"
 
 	build := func(width int) *Model {
-		model := newModel(Options{Config: &config.Options{FileTag: "example"}})
+		model := newModel(Options{Config: &config.Options{}})
 		model.screen = ScreenQueue
 		model.width = width
 		model.height = 30
@@ -125,8 +125,9 @@ func TestDownloadQueueStacksFullWidth(t *testing.T) {
 				if rule == "" {
 					t.Fatalf("card %q missing:\n%s", title, view)
 				}
-				if got := lipgloss.Width(rule); got != expected {
-					t.Fatalf("card %q uses %d columns, want %d:\n%s", title, got, expected, view)
+				// The box spans the width up to the margin on the right.
+				if got := lipgloss.Width(strings.TrimRight(rule, " ")); got != expected-pageMargin {
+					t.Fatalf("card %q uses %d columns, want %d:\n%s", title, got, expected-pageMargin, view)
 				}
 			}
 
@@ -136,7 +137,7 @@ func TestDownloadQueueStacksFullWidth(t *testing.T) {
 					t.Errorf("download view misses %q:\n%s", want, view)
 				}
 			}
-			if !strings.Contains(plain, "█") && !strings.Contains(plain, "░") {
+			if !strings.Contains(plain, "■") && !strings.Contains(plain, "···") {
 				t.Errorf("download view misses the progress bar:\n%s", view)
 			}
 			if !strings.Contains(plain, longLabel[:90]) {
@@ -240,7 +241,7 @@ func TestTuiScreensShowChromeAndSelection(t *testing.T) {
 		{"season episodes", "sehr langer Titel", "wählen", true, "○ offen"},
 		{"queue", "Downloads", "abbrechen", true, "lädt"},
 		{"summary", "Fertig", "Bibliothek", false, "✓"},
-		{"help", "Hilfe", "schließen", true, "Tasten"},
+		{"help", "Hilfe", "esc", true, "Tasten"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.screen, func(t *testing.T) {
@@ -250,7 +251,7 @@ func TestTuiScreensShowChromeAndSelection(t *testing.T) {
 					t.Errorf("%s view misses %q:\n%s", tc.screen, want, view)
 				}
 			}
-			if got := strings.Contains(view, "▸"); got != tc.cursor {
+			if got := strings.Contains(view, "▌"); got != tc.cursor {
 				t.Errorf("%s view cursor marker = %v, want %v:\n%s", tc.screen, got, tc.cursor, view)
 			}
 			assertFitsWidth(t, view, 80)
@@ -271,7 +272,7 @@ func TestTuiEpisodeStatusPills(t *testing.T) {
 	}
 
 	view := model.View()
-	for _, want := range []string{"Test Show", "S01E01", "S01E02", "○ offen", "✓ geladen", "▸"} {
+	for _, want := range []string{"Test Show", "S01E01", "S01E02", "○ offen", "✓ geladen", "▌"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("episode view misses %q:\n%s", want, view)
 		}
@@ -318,7 +319,7 @@ func TestLibraryKeepsCursorVisible(t *testing.T) {
 	if !strings.Contains(view, "Serie 060") {
 		t.Fatalf("cursor entry is not visible:\n%s", view)
 	}
-	if !strings.Contains(view, "▸") {
+	if !strings.Contains(view, "▌") {
 		t.Fatalf("cursor marker is not visible:\n%s", view)
 	}
 	assertFitsWidth(t, view, 80)
@@ -352,7 +353,7 @@ func TestHelpPopupFloatsOverThePage(t *testing.T) {
 	model.screen = ScreenLibrary
 	model.helpVisible = true
 	view := model.View()
-	for _, want := range []string{"Tasten", "öffnen", "laden", "prüfen", "suchen", "markieren", "zurücksetzen", "schließen"} {
+	for _, want := range []string{"Tasten", "öffnen", "laden", "prüfen", "suchen", "markieren", "zurücksetzen", "esc"} {
 		if !strings.Contains(ansi.Strip(view), want) {
 			t.Errorf("help popup misses %q:\n%s", want, view)
 		}
@@ -429,38 +430,47 @@ func TestDetailStatsRenderValueBeforeLabel(t *testing.T) {
 	t.Fatalf("detail stats line missing:\n%s", view)
 }
 
-// TestTuiUsesFlatCardsAndKeycaps checks the flat look: no box drawing frame,
-// a rule below every card title and keycaps instead of plain keys in the
-// footer.
-func TestTuiUsesFlatCardsAndKeycaps(t *testing.T) {
+// TestTuiUsesFramedBoxesAndKeys checks the look of the boxes: thin frames
+// with round corners and the title in the upper line, bold keys in the
+// footer and a background over the full width of the marked line.
+func TestTuiUsesFramedBoxesAndKeys(t *testing.T) {
 	profile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(profile)
 
 	view := populatedScreen("library", 80, 24).View()
-	for _, frame := range []string{"╭", "╰", "│", "╮", "╯"} {
-		if strings.Contains(view, frame) {
-			t.Fatalf("view still uses the framed panel style (%q):\n%s", frame, view)
+	lines := strings.Split(view, "\n")
+	top, bottom := -1, -1
+	for index, line := range lines {
+		plain := ansi.Strip(line)
+		plain = strings.TrimLeft(plain, " ")
+		if strings.HasPrefix(plain, "╭─ Serien ") {
+			top = index
+		}
+		if strings.HasPrefix(plain, "╰") && bottom < 0 {
+			bottom = index
 		}
 	}
-	if !strings.Contains(ansi.Strip(view), "▍ Serien") {
-		t.Fatalf("view misses the card title:\n%s", view)
+	if top < 0 || bottom <= top {
+		t.Fatalf("view misses the framed box with the title in its upper line:\n%s", view)
 	}
-	if rule := cardRuleAfterTitle(view, "Serien"); ansi.Strip(rule) != strings.Repeat("─", 80) {
-		t.Fatalf("card rule %q, want a full width rule", ansi.Strip(rule))
-	}
-
-	footer := strings.Split(view, "\n")
-	last := footer[len(footer)-1]
-	if !strings.Contains(last, "48;2;") {
-		t.Fatalf("footer does not render keycaps:\n%s", last)
+	for _, line := range lines[top+1 : bottom] {
+		plain := strings.TrimSpace(ansi.Strip(line))
+		if !strings.HasPrefix(plain, "│") || !strings.HasSuffix(plain, "│") {
+			t.Fatalf("box line is not framed: %q", plain)
+		}
 	}
 
-	// The selected row marks the cursor with a chip, the title itself stays
-	// free of a background.
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "\x1b[1;") {
+		t.Fatalf("footer does not render the keys in bold:\n%s", last)
+	}
+
+	// The marked line carries the bar of the cursor and a background up to
+	// the frame.
 	selected := ""
-	for _, line := range footer {
-		if strings.Contains(line, "▸") {
+	for _, line := range lines {
+		if strings.Contains(line, "▌") {
 			selected = line
 			break
 		}
@@ -468,10 +478,8 @@ func TestTuiUsesFlatCardsAndKeycaps(t *testing.T) {
 	if selected == "" {
 		t.Fatalf("view misses the cursor:\n%s", view)
 	}
-	for _, part := range ansiParts(selected) {
-		if strings.Contains(part.text, "Serie") && strings.Contains(part.code, "48;2;") {
-			t.Fatalf("selected title is highlighted with a background: %q", part.text)
-		}
+	if !strings.Contains(selected, sequenceOf(theme.Row)) {
+		t.Fatalf("marked line has no background: %q", selected)
 	}
 }
 
@@ -540,13 +548,13 @@ func TestQueueListsAllJobs(t *testing.T) {
 // TestQueueLogCanBeToggled checks that the activity log folds away.
 func TestQueueLogCanBeToggled(t *testing.T) {
 	model := populatedScreen("queue", 100, 30)
-	if plain := ansi.Strip(model.View()); !strings.Contains(plain, "▍ Aktivität") {
+	if plain := ansi.Strip(model.View()); !strings.Contains(plain, "─ Aktivität ") {
 		t.Fatalf("queue view misses the activity card:\n%s", plain)
 	}
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
 	view := updated.(*Model).View()
 	plain := ansi.Strip(view)
-	if strings.Contains(plain, "▍ Aktivität") {
+	if strings.Contains(plain, "─ Aktivität ") {
 		t.Fatalf("l should fold the activity card away:\n%s", plain)
 	}
 	if !strings.Contains(plain, "Aktivität einblenden") {
@@ -602,9 +610,12 @@ func TestToastShowsAboveTheKeyHints(t *testing.T) {
 	}
 
 	// A key press dismisses the toast.
+	// The protocol below the lists keeps the message, the bar above the
+	// keys lets it go.
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if view := updated.(*Model).View(); strings.Contains(view, "Bibliothek aktualisiert.") {
-		t.Fatalf("a key press should dismiss the toast:\n%s", view)
+	after := strings.Split(updated.(*Model).View(), "\n")
+	if above := after[len(after)-2]; strings.Contains(above, "Bibliothek aktualisiert.") {
+		t.Fatalf("a key press should dismiss the toast:\n%s", strings.Join(after, "\n"))
 	}
 }
 
@@ -655,16 +666,16 @@ func TestFooterShowsOnlyTheImportantKeys(t *testing.T) {
 	}
 }
 
-func TestCardTitleSitsAboveRule(t *testing.T) {
+func TestCardTitleSitsInFrame(t *testing.T) {
 	lines := renderCard(80, "Rahmen", []string{"Inhalt"}, true, "")
 	if len(lines) != 3 {
 		t.Fatalf("card with one content line uses %d lines, want 3: %q", len(lines), lines)
 	}
-	if !strings.Contains(lines[0], "Rahmen") {
-		t.Fatalf("card title is not in the title row: %q", lines[0])
+	if got := ansi.Strip(lines[0]); !strings.HasPrefix(got, "╭─ Rahmen ") || !strings.HasSuffix(got, "╮") {
+		t.Fatalf("card title is not in the upper line of the frame: %q", got)
 	}
-	if got, want := ansi.Strip(lines[1]), strings.Repeat("─", 80); got != want {
-		t.Fatalf("card rule %q, want %q", got, want)
+	if got, want := ansi.Strip(lines[2]), "╰"+strings.Repeat("─", 78)+"╯"; got != want {
+		t.Fatalf("card bottom %q, want %q", got, want)
 	}
 }
 
@@ -801,7 +812,7 @@ func TestEmptyStates(t *testing.T) {
 	library := newTestModel(80, 24)
 	library.screen = ScreenLibrary
 	if view := library.View(); !strings.Contains(view, "Noch keine Serien gespeichert.") ||
-		!strings.Contains(view, "URL hinzufügen") {
+		!strings.Contains(view, "Katalog öffnen") {
 		t.Fatalf("empty library state missing:\n%s", view)
 	}
 
@@ -885,7 +896,7 @@ func TestPluralCounts(t *testing.T) {
 
 func newTestModel(width, height int) *Model {
 	noop := func(context.Context) error { return nil }
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}, Run: noop})
+	model := newModel(Options{Config: &config.Options{}, Run: noop})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	return updated.(*Model)
 }

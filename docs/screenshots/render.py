@@ -20,6 +20,9 @@ PADDING = 24.0
 
 SGR = re.compile(r"\x1b\[([0-9;]*)m")
 
+# The block characters and the part of the cell they fill: offset and height.
+BLOCKS = {"█": (0.0, 1.0), "▄": (0.5, 0.5), "▀": (0.0, 0.5)}
+
 
 def segments(line):
     """Splits a rendered line into (text, foreground, background, bold) parts."""
@@ -69,7 +72,7 @@ def surface(line):
     for _, _, bg, _ in segments(line):
         if bg:
             return bg
-    return "#0F141B"
+    return "#0A0E14"
 
 
 def render(name, lines, target):
@@ -81,8 +84,8 @@ def render(name, lines, target):
     out = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="%.0f" height="%.0f" '
         'viewBox="0 0 %.0f %.0f">' % (svg_width, svg_height, svg_width, svg_height),
-        '<rect width="%.0f" height="%.0f" fill="#0F141B"/>' % (svg_width, svg_height),
-        '<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" fill="#0F141B" rx="8"/>'
+        '<rect width="%.0f" height="%.0f" fill="#0A0E14"/>' % (svg_width, svg_height),
+        '<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" fill="#0A0E14" rx="8"/>'
         % (PADDING / 2, PADDING / 2, svg_width - PADDING, svg_height - PADDING),
     ]
     for row, line in enumerate(lines):
@@ -99,7 +102,19 @@ def render(name, lines, target):
                     '<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" fill="%s"/>'
                     % (PADDING / 2 + column * CELL_WIDTH, top,
                        width_cells * CELL_WIDTH, CELL_HEIGHT, bg))
-            if text.strip():
+            # Block characters fill their cell like in a terminal; a font
+            # would leave gaps between the rows.
+            for start, run in runs(text):
+                x = PADDING / 2 + (column + start) * CELL_WIDTH
+                if run[0] in BLOCKS:
+                    offset, height = BLOCKS[run[0]]
+                    out.append(
+                        '<rect x="%.0f" y="%.1f" width="%.0f" height="%.1f" fill="%s"/>'
+                        % (x, top + offset * CELL_HEIGHT, len(run) * CELL_WIDTH,
+                           height * CELL_HEIGHT, fg or "#F4F8FF"))
+                    continue
+                if not run.strip():
+                    continue
                 style = "font-family=\"Menlo, Monaco, monospace\" font-size=\"%g\"" % FONT_SIZE
                 if fg:
                     style += ' fill="%s"' % fg
@@ -108,11 +123,10 @@ def render(name, lines, target):
                 if bold:
                     style += ' font-weight="700"'
                 # Non breaking spaces keep the alignment of the columns.
-                body = html.escape(text).replace(" ", "&#160;")
+                body = html.escape(run).replace(" ", "&#160;")
                 out.append(
                     '<text x="%.0f" y="%.0f" %s xml:space="preserve">%s</text>'
-                    % (PADDING / 2 + column * CELL_WIDTH, top + CELL_HEIGHT - 6,
-                       style, body))
+                    % (x, top + CELL_HEIGHT - 6, style, body))
             column += width_cells
     out.append("</svg>")
     svg = "\n".join(out)
@@ -125,6 +139,18 @@ def render(name, lines, target):
                    check=True, stdout=subprocess.DEVNULL)
     os.remove(svg_path)
     return png_path
+
+
+def runs(text):
+    """Splits a text into runs of block characters and runs of other text."""
+    parts = []
+    start = 0
+    for index in range(1, len(text) + 1):
+        if index == len(text) or (text[index] in BLOCKS) != (text[start] in BLOCKS) \
+                or (text[start] in BLOCKS and text[index] != text[start]):
+            parts.append((start, text[start:index]))
+            start = index
+    return parts
 
 
 def strip_ansi(line):

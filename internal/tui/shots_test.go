@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/revunix/ard-plus-dl/internal/ardplus"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,6 +25,10 @@ func TestShots(t *testing.T) {
 	profile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(profile)
+	// A fixed time keeps the images the same between two runs.
+	clock := headerClock
+	headerClock = func() string { return "20:15" }
+	defer func() { headerClock = clock }()
 
 	dir := os.Getenv("DUMP_SHOTS")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -31,8 +36,8 @@ func TestShots(t *testing.T) {
 	}
 
 	write := func(name string, model *Model) {
-		model.width = 100
-		model.height = 22
+		model.width = 112
+		model.height = 34
 		if err := os.WriteFile(filepath.Join(dir, name+".ansi"), []byte(model.View()), 0o644); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
@@ -41,12 +46,7 @@ func TestShots(t *testing.T) {
 	// The library with a few entries.
 	library := shotModel()
 	library.screen = ScreenLibrary
-	library.library = []store.Series{
-		{ID: 1, Title: "Tatort: Der stille Gast", Kind: store.KindTatort, URL: "https://www.ardplus.de/details/tatort-koeln", Enabled: true, NewCount: 2, AddedAt: time.Date(2026, 1, 8, 20, 11, 0, 0, time.Local), CheckedAt: timePtr(time.Date(2026, 10, 18, 21, 4, 0, 0, time.Local))},
-		{ID: 2, Title: "Tatort: Die schwarze Spinne", Kind: store.KindTatort, URL: "https://www.ardplus.de/details/tatort-muenster", Enabled: true, NewCount: 1, AddedAt: time.Date(2026, 2, 14, 19, 2, 0, 0, time.Local), CheckedAt: timePtr(time.Date(2026, 10, 18, 21, 4, 0, 0, time.Local))},
-		{ID: 3, Title: "Die Bülent Ceylan Show", Kind: store.KindSeries, URL: "https://www.ardplus.de/details/celebrity", Enabled: true, AddedAt: time.Date(2026, 3, 2, 8, 44, 0, 0, time.Local), CheckedAt: timePtr(time.Date(2026, 10, 17, 9, 12, 0, 0, time.Local))},
-		{ID: 4, Title: "Tatort: Das goldene Band", Kind: store.KindTatort, URL: "https://www.ardplus.de/details/tatort-wien", Enabled: false, AddedAt: time.Date(2026, 3, 19, 12, 30, 0, 0, time.Local)},
-	}
+	library.library = shotLibrary()
 	library.libCursor = 0
 	write("library", library)
 
@@ -96,10 +96,18 @@ func TestShots(t *testing.T) {
 	settings := shotModel()
 	settings.screen = ScreenEditEntry
 	settings.editEntry = library.library[0]
-	settings.editTag.SetValue("tatort")
 	settings.editSkip.SetValue("3")
-	settings.editFocus = 0
 	write("settings", settings)
+
+	// The catalog with the title under the cursor.
+	catalog := shotModel()
+	catalog.screen = ScreenCatalog
+	catalog.library = library.library
+	catalog.catalog = shotCatalog()
+	catalog.catalogGenres = topGenres(catalog.catalog, catalogGenreLimit)
+	catalog.catalogTab = catalogTabMovies
+	catalog.catalogCursor = 2
+	write("catalog", catalog)
 
 	// The help window over the library.
 	help := shotModel()
@@ -123,9 +131,55 @@ func timePtr(value time.Time) *time.Time {
 
 // shotModel builds a model with the given size.
 func shotModel() *Model {
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}})
-	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 22})
-	return updated.(*Model)
+	model := newModel(Options{Config: &config.Options{DownloadsDir: "/Users/ard/Downloads/ARD Plus"}, Version: "1.4.0"})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 112, Height: 34})
+	shot := updated.(*Model)
+	shot.library = shotLibrary()
+	// A few messages of the session for the protocol box.
+	day := time.Date(2026, 10, 28, 20, 11, 0, 0, time.Local)
+	shot.history = []historyEntry{
+		{at: day, text: "Bibliothek geladen (4 Einträge)"},
+		{at: day.Add(14 * time.Second), text: "Tatort: Der stille Gast hat 2 neue Folgen"},
+		{at: day.Add(15 * time.Second), text: "Tatort: Die schwarze Spinne hat 1 neue Folge"},
+		{at: day.Add(16 * time.Second), text: "Bibliothek aktualisiert."},
+	}
+	return shot
 }
 
 var _ = app.Event{}
+
+// shotLibrary returns the entries of the library in the images.
+func shotLibrary() []store.Series {
+	return []store.Series{
+		{ID: 1, Title: "Tatort: Der stille Gast", Kind: store.KindTatort, URL: "https://www.ardplus.de/details/tatort-koeln", Enabled: true, NewCount: 2, AddedAt: time.Date(2026, 1, 8, 20, 11, 0, 0, time.Local), CheckedAt: timePtr(time.Date(2026, 10, 18, 21, 4, 0, 0, time.Local))},
+		{ID: 2, Title: "Tatort: Die schwarze Spinne", Kind: store.KindTatort, URL: "https://www.ardplus.de/details/tatort-muenster", Enabled: true, NewCount: 1, AddedAt: time.Date(2026, 2, 14, 19, 2, 0, 0, time.Local), CheckedAt: timePtr(time.Date(2026, 10, 18, 21, 4, 0, 0, time.Local))},
+		{ID: 3, Title: "Die Bülent Ceylan Show", Kind: store.KindSeries, URL: "https://www.ardplus.de/details/celebrity", Enabled: true, AddedAt: time.Date(2026, 3, 2, 8, 44, 0, 0, time.Local), CheckedAt: timePtr(time.Date(2026, 10, 17, 9, 12, 0, 0, time.Local))},
+		{ID: 4, Title: "Tatort: Das goldene Band", Kind: store.KindTatort, URL: "https://www.ardplus.de/details/tatort-wien", Enabled: false, AddedAt: time.Date(2026, 3, 19, 12, 30, 0, 0, time.Local)},
+	}
+}
+
+// shotCatalog returns the titles of the catalog in the images.
+func shotCatalog() []ardplus.CatalogItem {
+	movie := func(id, title string, year, minutes int, genres ...string) ardplus.CatalogItem {
+		return ardplus.CatalogItem{ID: id, Title: title, Kind: ardplus.CatalogMovie, Year: year, Runtime: minutes * 60, Genres: genres}
+	}
+	series := func(id, title string, year, seasons int, genres ...string) ardplus.CatalogItem {
+		return ardplus.CatalogItem{ID: id, Title: title, Kind: ardplus.CatalogSeries, Year: year, Seasons: seasons, Genres: genres}
+	}
+	items := []ardplus.CatalogItem{
+		series("a0T01", "Abenteuer Nordsee", 2007, 1, "Doku", "Serien Dokus"),
+		series("a0T02", "Aenne Burda - Die Wirtschaftswunderfrau", 2018, 1, "Drama", "Nach wahren Begebenheiten"),
+		movie("a0S01", "Alles Isy", 2018, 89, "Drama", "Family"),
+		movie("a0S02", "Atari: Game Over", 2014, 63, "Doku", "Dokumentationen"),
+		movie("a0S03", "Berlin 1945", 2020, 179, "Doku", "Dokumentationen", "Highlights"),
+		series("a0T03", "Candice Renoir", 2013, 8, "Krimi", "Internationale Serien"),
+		series("a0T04", "Die Bülent Ceylan Show", 2021, 2, "Comedy"),
+		series("a0T05", "In aller Freundschaft - Die jungen Ärzte", 2015, 9, "Drama", "Arztserien"),
+		series("a0T06", "Manhunt", 2019, 1, "Krimi", "Thriller"),
+		series("a0T07", "Sherlock", 2010, 4, "Krimi", "Internationale Serien", "Highlights"),
+		movie("a0S04", "Tatort: Der stille Gast", 2019, 88, "Krimi", "Tatort", "Tatort Köln"),
+		movie("a0S05", "Tatort: Die schwarze Spinne", 2020, 87, "Krimi", "Tatort", "Tatort Münster"),
+	}
+	items[4].Synopsis = "„Berlin 1945“ erzählt die Geschichte von Befreiern und Befreiten, von Vernichtung und Erlösung: ein Jahr der Stunde Null an dem Ort, der sich von einem Kriegsschauplatz in ein Trümmerfeld verwandelt, um kurz darauf wieder den Beginn einer neuen Zeit einzuleiten."
+	return items
+}

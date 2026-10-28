@@ -83,8 +83,7 @@ func (m *Model) handlePendingCountMsg(typed pendingCountMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 	if err := m.readyForDownload(); err != nil {
-		m.fields[3].SetValue(m.cfg.FileTag)
-		m.focusField(3)
+		m.focusField(1)
 		m.startErr = err
 		pendingEntry := typed.entry
 		m.pendingDownload = &pendingEntry
@@ -112,18 +111,15 @@ func (m *Model) setEnabledCmd(entry store.Series, enabled bool) tea.Cmd {
 	})
 }
 
-// editEntryCmd stores the file tag and the skip count of a library entry.
-func (m *Model) editEntryCmd(tag string, skip int) tea.Cmd {
+// editEntryCmd stores the skip count of a library entry.
+func (m *Model) editEntryCmd(skip int) tea.Cmd {
 	if m.store == nil {
 		return nil
 	}
 	state := m.store
 	entry := m.editEntry
 	return m.track(func() tea.Msg {
-		err := state.SetSeriesTag(entry.ID, tag)
-		if err == nil {
-			err = state.SetSeriesSkip(entry.ID, skip)
-		}
+		err := state.SetSeriesSkip(entry.ID, skip)
 		message := ""
 		if err == nil {
 			message = entryTitle(entry) + ": gespeichert."
@@ -271,6 +267,7 @@ func (m *Model) openDetails(entry store.Series) tea.Cmd {
 	m.detailChoice = map[int]bool{}
 	m.detailChoiceExplicit = false
 	m.detailReturnSeason = 0
+	m.detailsFrom = ScreenLibrary
 	m.detailMessage = "Folgenliste wird geladen…"
 	m.screen = ScreenDetails
 	m.rebuildDetailSeasons()

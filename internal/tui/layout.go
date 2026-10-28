@@ -9,12 +9,24 @@ package tui
 const defaultFrameWidth = 80
 
 // frameWidth is the full width of the terminal.
+// One column stays free on both sides, so the frames do not touch the edge
+// of the terminal; narrow terminals need every column.
 func (m *Model) frameWidth() int {
+	if m.width >= marginMinWidth {
+		return m.width - 2*pageMargin
+	}
 	if m.width > 0 {
 		return m.width
 	}
 	return defaultFrameWidth
 }
+
+const (
+	// pageMargin is the free column on the left and the right of the screen.
+	pageMargin = 1
+	// marginMinWidth is the terminal width from which the margin shows.
+	marginMinWidth = 60
+)
 
 // contentWidth is the readable width for text that stands on its own, for
 // example the input fields.
@@ -30,7 +42,7 @@ func (m *Model) cardTextWidth(width int) int {
 // flowWidth is the width for running text. Long messages stay readable
 // instead of stretching over the whole terminal.
 func (m *Model) flowWidth(width int) int {
-	return min(cardInner(width), maxContentWidth)
+	return min(max(1, width-2), maxContentWidth)
 }
 
 // splitAt returns the width of two columns for a screen of the given width.

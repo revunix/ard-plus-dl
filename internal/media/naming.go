@@ -16,8 +16,7 @@ const (
 	// pathComponentMaxBytes keeps one path component plus ".mp4" and temporary
 	// suffixes below the 255-byte NAME_MAX of APFS/ext4/tmpfs.
 	pathComponentMaxBytes = 200
-	// stemMaxBytes is shorter because the media tag and the file tag are
-	// appended afterwards.
+	// stemMaxBytes is shorter because the media tag is appended afterwards.
 	stemMaxBytes = 170
 	// tokenMaxBytes bounds a short API value such as a year or an episode
 	// number.
@@ -403,9 +402,4 @@ func AudioCodecLabel(codec string, channels int, profile string) string {
 		label = fmt.Sprintf("%s.%dch", label, channels)
 	}
 	return label
-}
-
-// ApplyFileTag appends the mandatory Datei-Tag to the media tag.
-func ApplyFileTag(mediaTag, fileTag string) string {
-	return mediaTag + "-" + fileTag
 }

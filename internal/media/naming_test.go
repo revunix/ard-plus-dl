@@ -313,11 +313,6 @@ func TestOutputNameStems(t *testing.T) {
 			t.Fatalf("got %q", got)
 		}
 	})
-	t.Run("the Datei-Tag is appended", func(t *testing.T) {
-		if got := ApplyFileTag("German.AAC.1080p.Web-DL.x264", "example"); got != "German.AAC.1080p.Web-DL.x264-example" {
-			t.Fatalf("got %q", got)
-		}
-	})
 }
 
 func TestMediaLabels(t *testing.T) {

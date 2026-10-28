@@ -51,7 +51,7 @@ func runLibraryMode(ctx context.Context, opts *config.Options, env config.Env, s
 	}
 
 	// --check and --download-new need a session; downloading additionally needs
-	// ffmpeg, a tag and a writable downloads directory.
+	// ffmpeg and a writable downloads directory.
 	if entries, err := state.SeriesList(); err == nil && len(entries) == 0 {
 		fmt.Fprintln(stdout, "Bibliothek ist leer. Mit --add <url> eine Serie hinzufügen.")
 		return 0
@@ -62,14 +62,6 @@ func runLibraryMode(ctx context.Context, opts *config.Options, env config.Env, s
 		var err error
 		ffmpeg, ffprobe, err = checkDependencies(env)
 		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		if opts.FileTag == "" && stdinTTY {
-			fmt.Fprint(stdout, "Datei-Tag (z. B. example): ")
-			opts.FileTag = readLine(ctx, stdin)
-		}
-		if err := config.ValidateFileTag(opts.FileTag); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
@@ -150,7 +142,6 @@ type libraryEntryJSON struct {
 	Title    string `json:"title"`
 	Kind     string `json:"kind"`
 	Enabled  bool   `json:"enabled"`
-	Tag      string `json:"tag"`
 	Skip     int    `json:"skip"`
 	NewCount int    `json:"new_count"`
 	AddedAt  string `json:"added_at"`
@@ -168,7 +159,6 @@ func printLibraryJSON(w io.Writer, entries []store.Series) int {
 			Title:    entry.Title,
 			Kind:     entry.Kind,
 			Enabled:  entry.Enabled,
-			Tag:      entry.Tag,
 			Skip:     entry.Skip,
 			NewCount: entry.NewCount,
 			LastErr:  entry.LastError,

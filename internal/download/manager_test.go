@@ -48,7 +48,7 @@ func TestPrepareSkipsFinishedOutputs(t *testing.T) {
 	t.Run("an existing output file is skipped", func(t *testing.T) {
 		m, rec := newManager(t, false)
 		item := newItem()
-		final := filepath.Join(m.DownloadsDir, "My.Show.S01."+mediaTag+"-example", "My.Show.S01E01."+mediaTag+"-example.mp4")
+		final := filepath.Join(m.DownloadsDir, "My.Show.S01."+mediaTag, "My.Show.S01E01."+mediaTag+".mp4")
 		writeFile(t, final, "video", 0o644)
 
 		skip, err := m.Prepare(item)
@@ -156,7 +156,7 @@ func TestPrepareForceRedownload(t *testing.T) {
 		DirStem:     "My.Show.S01",
 		DirUsesTag:  true,
 	}
-	final := filepath.Join(m.DownloadsDir, "My.Show.S01."+mediaTag+"-example", "My.Show.S01E01."+mediaTag+"-example.mp4")
+	final := filepath.Join(m.DownloadsDir, "My.Show.S01."+mediaTag, "My.Show.S01E01."+mediaTag+".mp4")
 	staging := m.StagingPath(item)
 	if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
@@ -228,7 +228,7 @@ func TestFinalizeMovesTheDownload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
-	target := filepath.Join(m.DownloadsDir, "My.Show.S01."+mediaTag+"-example", "My.Show.S01E01."+mediaTag+"-example.mp4")
+	target := filepath.Join(m.DownloadsDir, "My.Show.S01."+mediaTag, "My.Show.S01E01."+mediaTag+".mp4")
 	if final != target {
 		t.Fatalf("Finalize = %q, want %q", final, target)
 	}
@@ -307,7 +307,7 @@ func TestFinalizeReusesExistingSeasonDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
-	want := filepath.Join(existing, "My.Show.S02E01."+mediaTag+"-example.mp4")
+	want := filepath.Join(existing, "My.Show.S02E01."+mediaTag+".mp4")
 	if final != want {
 		t.Fatalf("Finalize = %q, want %q", final, want)
 	}
@@ -341,7 +341,7 @@ func TestFinalizeKeepsTheContainerExtension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
-	want := filepath.Join(m.DownloadsDir, "My.Show.S05."+mediaTag+"-example", "My.Show.S05E01."+mediaTag+"-example.mkv")
+	want := filepath.Join(m.DownloadsDir, "My.Show.S05."+mediaTag, "My.Show.S05E01."+mediaTag+".mkv")
 	if final != want {
 		t.Fatalf("Finalize = %q, want %q", final, want)
 	}
@@ -360,7 +360,7 @@ func TestFinalizeTatortLandsInTheDownloadsRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
-	want := filepath.Join(m.DownloadsDir, "Tatort.Köln.Folge.850.2019."+mediaTag+"-example.mp4")
+	want := filepath.Join(m.DownloadsDir, "Tatort.Köln.Folge.850.2019."+mediaTag+".mp4")
 	if final != want {
 		t.Fatalf("Finalize = %q, want %q", final, want)
 	}
@@ -368,7 +368,6 @@ func TestFinalizeTatortLandsInTheDownloadsRoot(t *testing.T) {
 
 func TestFinalizeLongNamesStayBelowNameMax(t *testing.T) {
 	m, _ := newManager(t, false)
-	m.FileTag = "abcdefghijklmnop"
 	m.Probe = func(context.Context, string) (string, error) { return mediaTag, nil }
 
 	longTitle := strings.Repeat("Titel ", 60)
@@ -455,7 +454,6 @@ func newManager(t *testing.T, force bool) (*Manager, *recorder) {
 	rec := &recorder{}
 	m := &Manager{
 		DownloadsDir: filepath.Join(t.TempDir(), "downloads"),
-		FileTag:      "example",
 		Force:        force,
 		Probe:        func(context.Context, string) (string, error) { return mediaTag, nil },
 		Logf:         rec.logf,
@@ -482,7 +480,6 @@ func TestFinalizeRemovesTheEmptyStagingDirectories(t *testing.T) {
 	dir := t.TempDir()
 	manager := &Manager{
 		DownloadsDir: dir,
-		FileTag:      "tag",
 		Probe: func(context.Context, string) (string, error) {
 			return "German.AAC.1080p.Web-DL.x264", nil
 		},

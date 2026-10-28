@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/revunix/ard-plus-dl/internal/config"
 	"github.com/revunix/ard-plus-dl/internal/store"
 )
 
@@ -51,6 +50,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ScreenLibrary:
 		return m.handleLibraryKey(msg)
 
+	case ScreenCatalog:
+		return m.handleCatalogKey(msg)
+
 	case ScreenDetails:
 		return m.handleDetailsKey(key)
 
@@ -63,16 +65,16 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ScreenStart:
 		switch key {
 		case "tab", "down":
-			m.focusField((m.focus + 1) % m.fieldCount())
+			m.focusField(m.nextField(1))
 			return m, nil
 		case "shift+tab", "up":
-			m.focusField((m.focus + m.fieldCount() - 1) % m.fieldCount())
+			m.focusField(m.nextField(-1))
 			return m, nil
 		case "esc":
 			m.pendingDownload = nil
 			m.formPurpose = formStart
-			if len(m.library) > 0 {
-				m.screen = ScreenLibrary
+			if m.hasCatalog() || len(m.library) > 0 {
+				m.screen = m.homeScreen()
 				return m, nil
 			}
 		case "enter":
@@ -91,10 +93,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.pendingDownload = nil
 				return m, m.downloadNew(entry)
 			}
-			if m.formPurpose == formSettings || (m.cfg.URL == "" && len(m.library) > 0) {
+			if m.formPurpose == formSettings || (m.cfg.URL == "" && (m.hasCatalog() || len(m.library) > 0)) {
 				// Settings-only edit: nothing to download.
 				m.loadLibrary()
-				m.screen = ScreenLibrary
+				m.screen = m.homeScreen()
 				m.setToast("Gespeichert.", toastSuccess)
 				return m, nil
 			}
@@ -258,14 +260,6 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleEditEntryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch key {
-	case "tab", "down":
-		m.editFocus = (m.editFocus + 1) % 2
-		m.editErr = ""
-		return m, nil
-	case "shift+tab", "up":
-		m.editFocus = (m.editFocus + 1) % 2
-		m.editErr = ""
-		return m, nil
 	case "esc":
 		m.screen = ScreenLibrary
 		m.editErr = ""
@@ -280,37 +274,12 @@ func (m *Model) handleEditEntryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editErr = err.Error()
 			return m, nil
 		}
-		tag := strings.TrimSpace(m.editTag.Value())
-		if tag != "" {
-			if err := config.ValidateFileTag(tag); err != nil {
-				m.editErr = err.Error()
-				return m, nil
-			}
-		}
 		m.editErr = ""
-		return m, m.editEntryCmd(tag, skip)
+		return m, m.editEntryCmd(skip)
 	}
-	field := m.editField()
-	updated, cmd := field.Update(msg)
-	m.setEditField(updated)
+	updated, cmd := m.editSkip.Update(msg)
+	m.editSkip = updated
 	return m, cmd
-}
-
-// editField returns the focused field of the series settings.
-func (m *Model) editField() textinput.Model {
-	if m.editFocus == 0 {
-		return m.editTag
-	}
-	return m.editSkip
-}
-
-// setEditField stores the focused field of the series settings.
-func (m *Model) setEditField(field textinput.Model) {
-	if m.editFocus == 0 {
-		m.editTag = field
-		return
-	}
-	m.editSkip = field
 }
 
 // editSkipValue reads the number of episodes to skip. Zero and one skip
@@ -345,6 +314,8 @@ func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key {
 	case "q":
 		return m.quit(0)
+	case "tab":
+		return m, m.openCatalog()
 	case "/":
 		m.searching = true
 		m.search.Focus()
@@ -374,13 +345,7 @@ func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n", "c":
 		return m, m.checkLibrary()
 	case "s":
-		m.formPurpose = formSettings
-		m.pendingDownload = nil
-		m.fields[0].SetValue(m.cfg.URL)
-		m.fields[3].SetValue(m.cfg.FileTag)
-		m.focusField(3)
-		m.startErr = nil
-		m.screen = ScreenStart
+		m.openSettings()
 		return m, nil
 	case "e":
 		entry, ok := m.libraryEntry()
@@ -388,13 +353,12 @@ func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.editEntry = entry
-		m.editTag.SetValue(entry.Tag)
 		skip := ""
 		if entry.Skip > 0 {
 			skip = strconv.Itoa(entry.Skip)
 		}
 		m.editSkip.SetValue(skip)
-		m.editFocus = 0
+		m.editSkip.Focus()
 		m.editErr = ""
 		m.screen = ScreenEditEntry
 		return m, nil
@@ -420,12 +384,26 @@ func (m *Model) handleLibraryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.libMessage = m.selectionMessage()
 		return m, nil
 	case "a":
+		if m.hasCatalog() {
+			// Titles come from the catalog; the address is not typed by hand.
+			return m, m.openCatalog()
+		}
 		m.formPurpose = formAddURL
 		m.pendingDownload = nil
 		m.fields[0].SetValue("")
 		m.focusField(0)
 		m.startErr = nil
 		m.screen = ScreenStart
+		return m, nil
+	case "esc":
+		if m.filterActive() {
+			m.search.SetValue("")
+			m.clampLibOffset()
+			return m, nil
+		}
+		if m.hasCatalog() {
+			return m, m.openCatalog()
+		}
 		return m, nil
 	case "enter", "o":
 		entry, ok := m.libraryEntry()
@@ -553,7 +531,7 @@ func (m *Model) handleDetailsKey(key string) (tea.Model, tea.Cmd) {
 	if m.details.Kind == store.KindSeries && len(m.detailSeasons) > 0 {
 		switch key {
 		case "q", "esc", "backspace":
-			m.screen = ScreenLibrary
+			m.screen = m.detailsBack()
 			return m, nil
 		case "up", "k":
 			if m.detailSeasonCursor > 0 {
@@ -615,7 +593,7 @@ func (m *Model) handleEpisodeListKey(key string, inSeason bool) (tea.Model, tea.
 			m.detailMessage = ""
 			m.clampSeasonOffset()
 		} else {
-			m.screen = ScreenLibrary
+			m.screen = m.detailsBack()
 		}
 		return m, nil
 	case "up", "k":
@@ -669,4 +647,59 @@ func (m *Model) handleEpisodeListKey(key string, inSeason bool) (tea.Model, tea.
 		return m, nil
 	}
 	return m, nil
+}
+
+// detailsBack returns the screen the details were opened from: the library
+// or the catalog.
+func (m *Model) detailsBack() Screen {
+	if m.detailsFrom == ScreenCatalog {
+		return ScreenCatalog
+	}
+	return ScreenLibrary
+}
+
+// hasCatalog reports whether the catalog of ARD Plus is available. It is
+// the home of the interface then.
+func (m *Model) hasCatalog() bool {
+	return m.opts.Catalog != nil
+}
+
+// homeScreen returns the screen the interface comes back to: the catalog,
+// or the library when there is no catalog.
+func (m *Model) homeScreen() Screen {
+	if m.hasCatalog() {
+		return ScreenCatalog
+	}
+	return ScreenLibrary
+}
+
+// hidesURLField reports whether the form leaves the address out. With the
+// catalog the titles are chosen there, not typed in.
+func (m *Model) hidesURLField() bool {
+	return m.hasCatalog() && m.formPurpose != formAddURL
+}
+
+// nextField returns the entry of the form that follows the focused one in
+// the given direction; the hidden address field is skipped.
+func (m *Model) nextField(step int) int {
+	count := m.fieldCount()
+	next := m.focus
+	for range count {
+		next = (next + step + count) % count
+		if next == 0 && m.hidesURLField() {
+			continue
+		}
+		return next
+	}
+	return m.focus
+}
+
+// openSettings opens the form with the account and the color scheme.
+func (m *Model) openSettings() {
+	m.formPurpose = formSettings
+	m.pendingDownload = nil
+	m.fields[0].SetValue(m.cfg.URL)
+	m.focusField(1)
+	m.startErr = nil
+	m.screen = ScreenStart
 }

@@ -48,8 +48,8 @@ Options (they must come before the URL):
   -h, --help             show this help and exit
   -v, --version          show the version and exit
 
-Environment: ARD_PLUS_USER, ARD_PLUS_PASSWORD, ARD_PLUS_TAG (Datei-Tag is mandatory),
-             ARD_PLUS_CREDENTIALS_FILE, ARD_PLUS_FFMPEG, ARD_PLUS_FFPROBE,
+Environment: ARD_PLUS_USER, ARD_PLUS_PASSWORD, ARD_PLUS_CREDENTIALS_FILE,
+             ARD_PLUS_FFMPEG, ARD_PLUS_FFPROBE,
              ARD_PLUS_DEBUG_DIR (schreibt manifest.mpd, tracks.txt, requests.log),
              ARD_PLUS_LIBRARY (SQLite-Datei), DOWNLOADS_DIR, XDG_STATE_HOME, XDG_CONFIG_HOME
 
@@ -144,17 +144,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	opts.TokenFile = config.TokenPath(env, opts.WorkDir)
 	hasToken := fileExists(opts.TokenFile)
 
-	// The interactive UI collects the Datei-Tag and missing credentials on its
-	// start screen; only the headless paths prompt on the terminal.
+	// The interactive UI collects missing credentials on its start screen;
+	// only the headless paths prompt on the terminal.
 	if !interactive {
-		if opts.FileTag == "" && stdinTTY {
-			fmt.Fprint(stdout, "Datei-Tag (z. B. example): ")
-			opts.FileTag = readLine(ctx, stdin)
-		}
-		if err := config.ValidateFileTag(opts.FileTag); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
 		if !hasToken && (opts.Username == "" || opts.Password == "") && stdinTTY {
 			promptCredentials(ctx, opts, stdin, stdout, stdinFile)
 		}
@@ -177,8 +169,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	persistCredentials(opts, state, secrets)
 
 	if interactive {
-		needsStart := opts.URL == "" || opts.FileTag == "" ||
-			(!hasToken && (opts.Username == "" || opts.Password == ""))
+		// The catalog is the home of the interface, so a URL is no reason
+		// for the form: only missing credentials are.
+		needsStart := !hasToken && (opts.Username == "" || opts.Password == "")
 		ensureSession := func(callCtx context.Context) error {
 			return session.Ensure(callCtx)
 		}
@@ -213,6 +206,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 				}
 				return application.DownloadEpisodes(newCtx, entry, ids)
 			},
+			// The catalog needs no login: it lists the titles, not the
+			// streams.
+			Catalog: application.API.Catalog,
 			RefreshEntry: func(refreshCtx context.Context, entry store.Series) error {
 				if err := ensureSession(refreshCtx); err != nil {
 					return err
@@ -260,9 +256,6 @@ func prefill(opts *config.Options, state *store.Store, secrets secret.Store, int
 	if opts.Username == "" && state != nil {
 		opts.Username = setting(state, store.SettingUsername)
 	}
-	if opts.FileTag == "" && state != nil {
-		opts.FileTag = setting(state, store.SettingFileTag)
-	}
 	if opts.Password == "" && secrets != nil {
 		if password, err := secrets.Get(); err == nil {
 			opts.Password = password
@@ -287,7 +280,6 @@ func setting(state *store.Store, key string) string {
 func persistCredentials(opts *config.Options, state *store.Store, secrets secret.Store) {
 	if state != nil {
 		_ = state.SetSetting(store.SettingUsername, opts.Username)
-		_ = state.SetSetting(store.SettingFileTag, opts.FileTag)
 	}
 	_ = secrets
 }
@@ -383,7 +375,6 @@ func buildApp(opts *config.Options, session *auth.Session, ffmpeg, ffprobe strin
 	}
 	manager := &download.Manager{
 		DownloadsDir: opts.DownloadsDir,
-		FileTag:      opts.FileTag,
 		Force:        opts.ForceRedownload,
 		Probe:        func(ctx context.Context, path string) (string, error) { return media.ProbeMediaTag(ctx, ffprobe, path) },
 		Logf:         logs.Logf,

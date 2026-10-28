@@ -265,24 +265,13 @@ func (a *App) downloadSelection(ctx context.Context, entry store.Series, wanted 
 	return a.runURL(ctx, entry.URL, a.entrySkip(entry))
 }
 
-// applySeriesDefaults takes the Datei-Tag of the series over the global one.
-// An invalid tag is ignored, so a broken library entry cannot stop the run.
-func (a *App) applySeriesDefaults(entry store.Series) {
-	a.fileTag = ""
+// applySeriesDefaults starts the run of a series with its own values.
+func (a *App) applySeriesDefaults(store.Series) {
 	a.skip = 0
-	if entry.Tag == "" {
-		return
-	}
-	if err := config.ValidateFileTag(entry.Tag); err != nil {
-		a.logf("Der Datei-Tag der Serie %q wird ignoriert: %v", entry.Title, err)
-		return
-	}
-	a.fileTag = entry.Tag
 }
 
 // clearSeriesDefaults drops the per-series values again.
 func (a *App) clearSeriesDefaults() {
-	a.fileTag = ""
 	a.skip = 0
 }
 

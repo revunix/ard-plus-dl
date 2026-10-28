@@ -107,9 +107,6 @@ type App struct {
 	// onlySeasons, when set for a selection, holds the requested episodes per
 	// season number so the flow skips seasons without requested episodes.
 	onlySeasons map[int]int
-	// fileTag is the Datei-Tag of the series that is currently downloaded. It
-	// overrides the global tag when the series carries its own.
-	fileTag string
 	// skip is the number of leading episodes of the first season that are
 	// skipped for the series that is currently downloaded.
 	skip int
@@ -134,11 +131,6 @@ func (a *App) wanted(episodeID string) bool {
 		return true
 	}
 	return a.onlyEpisodes[episodeID]
-}
-
-// itemTag returns the Datei-Tag that the items of the current run carry.
-func (a *App) itemTag() string {
-	return a.fileTag
 }
 
 // markDone records a downloaded episode in the library. The path is the file

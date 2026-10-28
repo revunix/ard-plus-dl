@@ -52,7 +52,7 @@ func TestChosenSchemePaintsTheBackground(t *testing.T) {
 
 	applyTheme(ThemeDark)
 	view := populatedScreen("library", 60, 16).View()
-	if !strings.Contains(view, "48;2;15;20;27") {
+	if !strings.Contains(view, "48;2;10;14;20") {
 		t.Fatalf("the dark scheme does not paint its background:\n%q", view)
 	}
 	for index, line := range strings.Split(view, "\n") {
@@ -64,7 +64,7 @@ func TestChosenSchemePaintsTheBackground(t *testing.T) {
 	// The automatic mode paints the same surface as the dark scheme.
 	applyTheme(ThemeAuto)
 	auto := populatedScreen("library", 60, 16).View()
-	if !strings.Contains(auto, "48;2;15;20;27") {
+	if !strings.Contains(auto, "48;2;10;14;20") {
 		t.Fatalf("the automatic scheme does not paint its background:\n%q", auto)
 	}
 }
@@ -78,7 +78,7 @@ func TestThemeIsStoredAndRead(t *testing.T) {
 	}
 	defer state.Close()
 
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 	model.setTheme(ThemeDark)
 	value, err := state.Setting(store.SettingTheme)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestThemeIsStoredAndRead(t *testing.T) {
 		t.Fatalf("stored theme = %q, want %q", value, "dark")
 	}
 
-	other := newModel(Options{Config: &config.Options{FileTag: "example"}, Store: state})
+	other := newModel(Options{Config: &config.Options{}, Store: state})
 	if themeMode != ThemeDark {
 		t.Fatalf("theme mode = %v, want the stored dark scheme", themeMode)
 	}
@@ -135,7 +135,7 @@ func TestSettingsSwitchTheTheme(t *testing.T) {
 
 // TestSplashScreenHandsOver checks the splash screen and its handover.
 func TestSplashScreenHandsOver(t *testing.T) {
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}, Splash: true, Version: "1.2.3"})
+	model := newModel(Options{Config: &config.Options{}, Splash: true, Version: "1.2.3"})
 	if model.screen != ScreenSplash {
 		t.Fatalf("screen = %v, want the splash screen", model.screen)
 	}
@@ -161,7 +161,7 @@ func TestSplashScreenHandsOver(t *testing.T) {
 // TestSplashScreenFitsTheTerminal checks the size of the splash screen.
 func TestSplashScreenFitsTheTerminal(t *testing.T) {
 	for _, size := range []struct{ width, height int }{{40, 12}, {80, 24}, {120, 30}} {
-		model := newModel(Options{Config: &config.Options{FileTag: "example"}, Splash: true})
+		model := newModel(Options{Config: &config.Options{}, Splash: true})
 		model.width = size.width
 		model.height = size.height
 		view := model.View()

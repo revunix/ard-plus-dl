@@ -19,7 +19,6 @@ import (
 // Setting keys.
 const (
 	SettingUsername = "username"
-	SettingFileTag  = "file_tag"
 	SettingLastURL  = "last_url"
 	SettingTheme    = "theme"
 )
@@ -38,7 +37,6 @@ type Series struct {
 	Title     string
 	Kind      string
 	Enabled   bool
-	Tag       string
 	Skip      int
 	AddedAt   time.Time
 	CheckedAt *time.Time
@@ -81,7 +79,6 @@ CREATE TABLE IF NOT EXISTS series (
     title      TEXT NOT NULL DEFAULT '',
     kind       TEXT NOT NULL DEFAULT '',
     enabled    INTEGER NOT NULL DEFAULT 1,
-    tag        TEXT NOT NULL DEFAULT '',
     skip       INTEGER NOT NULL DEFAULT 0,
     added_at   TEXT NOT NULL,
     checked_at TEXT,
@@ -106,6 +103,8 @@ CREATE INDEX IF NOT EXISTS episodes_open ON episodes(series_id, downloaded_at);
 // later versions introduced.
 var migrations = []string{
 	`ALTER TABLE episodes ADD COLUMN path TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE series DROP COLUMN tag`,
+	`DELETE FROM settings WHERE key = 'file_tag'`,
 }
 
 // Open opens (and creates) the database at path.
@@ -133,8 +132,10 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("create schema: %w", err)
 	}
 	for _, statement := range migrations {
-		// A column that already exists is not an error.
-		if _, err := db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		// A column that already exists, or one that is already gone, is not
+		// an error.
+		if _, err := db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column") &&
+			!strings.Contains(err.Error(), "no such column") {
 			db.Close()
 			return nil, fmt.Errorf("migrate schema: %w", err)
 		}
@@ -215,7 +216,7 @@ func (s *Store) UpsertSeries(url, title, kind string) (int64, error) {
 
 // SeriesList returns the library ordered by title.
 func (s *Store) SeriesList() ([]Series, error) {
-	rows, err := s.db.Query(`SELECT id, url, title, kind, enabled, tag, skip, added_at,
+	rows, err := s.db.Query(`SELECT id, url, title, kind, enabled, skip, added_at,
         checked_at, new_count, last_error FROM series ORDER BY title COLLATE NOCASE, url`)
 	if err != nil {
 		return nil, err
@@ -230,7 +231,7 @@ func (s *Store) SeriesList() ([]Series, error) {
 			added     string
 			checkedAt sql.NullString
 		)
-		if err := rows.Scan(&entry.ID, &entry.URL, &entry.Title, &entry.Kind, &enabled, &entry.Tag,
+		if err := rows.Scan(&entry.ID, &entry.URL, &entry.Title, &entry.Kind, &enabled,
 			&entry.Skip, &added, &checkedAt, &entry.NewCount, &entry.LastError); err != nil {
 			return nil, err
 		}
@@ -271,12 +272,6 @@ func (s *Store) SetSeriesEnabled(id int64, enabled bool) error {
 		value = 1
 	}
 	_, err := s.db.Exec(`UPDATE series SET enabled = ? WHERE id = ?`, value, id)
-	return err
-}
-
-// SetSeriesTag stores the per-series Datei-Tag override.
-func (s *Store) SetSeriesTag(id int64, tag string) error {
-	_, err := s.db.Exec(`UPDATE series SET tag = ? WHERE id = ?`, tag, id)
 	return err
 }
 

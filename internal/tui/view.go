@@ -49,6 +49,8 @@ func (m *Model) pageView() []string {
 		return m.summaryView()
 	case ScreenLibrary:
 		return m.libraryView()
+	case ScreenCatalog:
+		return m.catalogView()
 	case ScreenDetails:
 		return m.detailsView()
 	case ScreenSeasonEpisodes:
@@ -60,11 +62,17 @@ func (m *Model) pageView() []string {
 // paintRows fits every line to the terminal width and paints the surface
 // color of the color scheme behind it.
 func (m *Model) paintRows(lines []string) []string {
-	width := m.frameWidth()
+	inner := m.frameWidth()
+	width := inner
+	margin := ""
+	if m.width > 0 {
+		width = m.width
+		margin = strings.Repeat(" ", (width-inner)/2)
+	}
 	background := backgroundSequence()
 	painted := make([]string, 0, len(lines))
 	for _, line := range lines {
-		line = fitLine(line, width)
+		line = margin + fitLine(line, inner)
 		if background != "" {
 			padding := width - ansi.StringWidth(line)
 			if padding > 0 {
@@ -113,13 +121,22 @@ func (m *Model) frameRows(header, body, footer []string) []string {
 	return m.paintRows(lines)
 }
 
-// cardInner is the content width inside a card. The two cells of slack cover
-// the card indent.
+// cardInner is the content width inside a box: the frame and one cell of
+// room on each side.
 func cardInner(width int) int {
-	return max(1, width-2)
+	return max(1, width-4)
 }
 
-// cardOverhead returns the rows a card spends on its title row and its rule.
+// boxHeight returns the number of content lines a box gets when it fills the
+// body between header and footer. The reserved lines stay free below the box.
+func (m *Model) boxHeight(header, footer []string, reserved int) int {
+	if m.height <= 0 {
+		return 0
+	}
+	return max(0, m.height-len(header)-len(footer)-reserved-2)
+}
+
+// cardOverhead returns the rows a box spends on its upper and lower line.
 func cardOverhead(width int) int {
 	if width < minCardWidth {
 		return 0

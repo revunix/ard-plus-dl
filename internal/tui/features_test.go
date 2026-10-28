@@ -29,7 +29,7 @@ func TestSeriesSettingsAreEditable(t *testing.T) {
 	if _, err := state.UpsertSeries("https://www.ardplus.de/details/x", "Test Show", store.KindSeries); err != nil {
 		t.Fatalf("add series: %v", err)
 	}
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 	model.screen = ScreenLibrary
 	model.loadLibrary()
 	if len(model.library) != 1 {
@@ -42,12 +42,11 @@ func TestSeriesSettingsAreEditable(t *testing.T) {
 	if model.screen != ScreenEditEntry {
 		t.Fatalf("screen = %v, want the settings of the series", model.screen)
 	}
-	if !strings.Contains(model.View(), "Datei-Tag") || !strings.Contains(model.View(), "Überspringen") {
+	if !strings.Contains(model.View(), "Überspringen") {
 		t.Fatalf("the settings miss their fields:\n%s", model.View())
 	}
 
-	// The values are stored.
-	model.editTag.SetValue("eigener")
+	// The value is stored.
 	model.editSkip.SetValue("4")
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(*Model)
@@ -60,9 +59,6 @@ func TestSeriesSettingsAreEditable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read entry: %v", err)
 	}
-	if entry.Tag != "eigener" {
-		t.Fatalf("tag = %q, want %q", entry.Tag, "eigener")
-	}
 	if entry.Skip != 4 {
 		t.Fatalf("skip = %d, want 4", entry.Skip)
 	}
@@ -71,22 +67,21 @@ func TestSeriesSettingsAreEditable(t *testing.T) {
 	}
 }
 
-// TestSeriesSettingsRejectAnInvalidTag checks the validation.
-func TestSeriesSettingsRejectAnInvalidTag(t *testing.T) {
+// TestSeriesSettingsRejectAnInvalidSkip checks the validation.
+func TestSeriesSettingsRejectAnInvalidSkip(t *testing.T) {
 	model := populatedScreen("library", 80, 24)
 	model.screen = ScreenEditEntry
-	model.editTag.SetValue("mit leerzeichen")
-	model.editSkip.SetValue("0")
+	model.editSkip.SetValue("viele")
 
 	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(*Model)
 	if cmd != nil {
-		t.Fatal("an invalid tag must not be saved")
+		t.Fatal("an invalid number must not be saved")
 	}
 	if model.editErr == "" {
-		t.Fatal("an invalid tag must show an error")
+		t.Fatal("an invalid number must show an error")
 	}
-	if !strings.Contains(model.View(), "Datei-Tag") {
+	if !strings.Contains(model.View(), "Überspringen") {
 		t.Fatalf("the settings disappeared:\n%s", model.View())
 	}
 }
@@ -98,12 +93,12 @@ func TestSeriesSettingsEscapeDoesNotStore(t *testing.T) {
 	if _, err := state.UpsertSeries("https://www.ardplus.de/details/x", "Test Show", store.KindSeries); err != nil {
 		t.Fatalf("add series: %v", err)
 	}
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 	model.screen = ScreenLibrary
 	model.loadLibrary()
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	model = updated.(*Model)
-	model.editTag.SetValue("eigener")
+	model.editSkip.SetValue("7")
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	model = updated.(*Model)
@@ -114,8 +109,8 @@ func TestSeriesSettingsEscapeDoesNotStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read entry: %v", err)
 	}
-	if entry.Tag != "" {
-		t.Fatalf("tag = %q, want it unchanged", entry.Tag)
+	if entry.Skip != 0 {
+		t.Fatalf("skip = %d, want it unchanged", entry.Skip)
 	}
 }
 
@@ -123,12 +118,8 @@ func TestSeriesSettingsEscapeDoesNotStore(t *testing.T) {
 func TestLibraryDetailShowsTheSettings(t *testing.T) {
 	model := populatedScreen("library", 110, 30)
 	model.libCursor = 0
-	model.library[0].Tag = "eigener"
 	model.library[0].Skip = 3
 	view := model.View()
-	if !strings.Contains(view, "eigener") {
-		t.Errorf("the details miss the file tag:\n%s", view)
-	}
 	if !strings.Contains(view, "3 Folgen") {
 		t.Errorf("the details miss the skip count:\n%s", view)
 	}

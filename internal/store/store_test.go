@@ -122,7 +122,6 @@ func TestSettings(t *testing.T) {
 		s := newStore(t)
 		values := map[string]string{
 			SettingUsername: "alice",
-			SettingFileTag:  "my.tag",
 			SettingLastURL:  "https://www.ardplus.de/details/x",
 		}
 		for key, value := range values {
@@ -140,17 +139,17 @@ func TestSettings(t *testing.T) {
 
 	t.Run("overwrites an existing value", func(t *testing.T) {
 		s := newStore(t)
-		if err := s.SetSetting(SettingFileTag, "one"); err != nil {
+		if err := s.SetSetting(SettingUsername, "one"); err != nil {
 			t.Fatalf("SetSetting: %v", err)
 		}
-		if err := s.SetSetting(SettingFileTag, "two"); err != nil {
+		if err := s.SetSetting(SettingUsername, "two"); err != nil {
 			t.Fatalf("SetSetting: %v", err)
 		}
-		got, err := s.Setting(SettingFileTag)
+		got, err := s.Setting(SettingUsername)
 		if err != nil || got != "two" {
 			t.Fatalf("Setting = %q, %v; want %q, nil", got, err, "two")
 		}
-		if n := countRows(t, s, `SELECT COUNT(*) FROM settings WHERE key = ?`, SettingFileTag); n != 1 {
+		if n := countRows(t, s, `SELECT COUNT(*) FROM settings WHERE key = ?`, SettingUsername); n != 1 {
 			t.Errorf("settings rows = %d, want 1", n)
 		}
 	})
@@ -205,8 +204,8 @@ func TestUpsertSeries(t *testing.T) {
 		if !entry.Enabled {
 			t.Error("Enabled = false, want true by default")
 		}
-		if entry.Tag != "" || entry.Skip != 0 {
-			t.Errorf("Tag = %q, Skip = %d; want empty and 0", entry.Tag, entry.Skip)
+		if entry.Skip != 0 {
+			t.Errorf("Skip = %d; want 0", entry.Skip)
 		}
 		if entry.AddedAt.IsZero() || time.Since(entry.AddedAt) > time.Minute {
 			t.Errorf("AddedAt = %v, want a fresh timestamp", entry.AddedAt)
@@ -222,9 +221,6 @@ func TestUpsertSeries(t *testing.T) {
 		}
 		if err := s.SetSeriesEnabled(id, false); err != nil {
 			t.Fatalf("SetSeriesEnabled: %v", err)
-		}
-		if err := s.SetSeriesTag(id, "TAG1"); err != nil {
-			t.Fatalf("SetSeriesTag: %v", err)
 		}
 		if err := s.RecordCheck(id, 4, "letzter Fehler"); err != nil {
 			t.Fatalf("RecordCheck: %v", err)
@@ -246,9 +242,6 @@ func TestUpsertSeries(t *testing.T) {
 		}
 		if entry.Enabled {
 			t.Error("Enabled = true, want false from before")
-		}
-		if entry.Tag != "TAG1" {
-			t.Errorf("Tag = %q, want TAG1", entry.Tag)
 		}
 		if entry.NewCount != 4 || entry.LastError != "letzter Fehler" || entry.CheckedAt == nil {
 			t.Errorf("check history = (%d, %q, %v), want (4, letzter Fehler, set)", entry.NewCount, entry.LastError, entry.CheckedAt)
@@ -394,17 +387,14 @@ func TestSeriesByURL(t *testing.T) {
 	s := newStore(t)
 	const url = "https://www.ardplus.de/details/show"
 	id := addSeries(t, s, url)
-	if err := s.SetSeriesTag(id, "MEIN.TAG"); err != nil {
-		t.Fatalf("SetSeriesTag: %v", err)
-	}
 
 	t.Run("hit", func(t *testing.T) {
 		entry, err := s.SeriesByURL(url)
 		if err != nil || entry == nil {
 			t.Fatalf("SeriesByURL = %+v, %v; want entry, nil", entry, err)
 		}
-		if entry.ID != id || entry.Tag != "MEIN.TAG" || entry.Kind != KindSeries {
-			t.Errorf("entry = %+v, want id %d tag MEIN.TAG kind %s", entry, id, KindSeries)
+		if entry.ID != id || entry.Kind != KindSeries {
+			t.Errorf("entry = %+v, want id %d kind %s", entry, id, KindSeries)
 		}
 	})
 
@@ -434,21 +424,6 @@ func TestSeriesMutations(t *testing.T) {
 		}
 		if got := enabledOf(t, s, id); !got {
 			t.Error("Enabled = false, want true")
-		}
-	})
-
-	t.Run("SetSeriesTag stores the tag", func(t *testing.T) {
-		s := newStore(t)
-		id := addSeries(t, s, "https://www.ardplus.de/details/show")
-		if err := s.SetSeriesTag(id, "SERIE.TAG"); err != nil {
-			t.Fatalf("SetSeriesTag: %v", err)
-		}
-		entry, err := s.SeriesByURL("https://www.ardplus.de/details/show")
-		if err != nil || entry == nil {
-			t.Fatalf("SeriesByURL = %+v, %v", entry, err)
-		}
-		if entry.Tag != "SERIE.TAG" {
-			t.Errorf("Tag = %q, want SERIE.TAG", entry.Tag)
 		}
 	})
 
@@ -858,22 +833,16 @@ func TestEpisodesListsEveryEpisode(t *testing.T) {
 	}
 }
 
-func TestSetSeriesTagAndSkip(t *testing.T) {
+func TestSetSeriesSkip(t *testing.T) {
 	s := newStore(t)
 	id := addSeries(t, s, "https://www.ardplus.de/details/show")
 
-	if err := s.SetSeriesTag(id, "serie"); err != nil {
-		t.Fatalf("SetSeriesTag: %v", err)
-	}
 	if err := s.SetSeriesSkip(id, 3); err != nil {
 		t.Fatalf("SetSeriesSkip: %v", err)
 	}
 	entry, err := s.SeriesByURL("https://www.ardplus.de/details/show")
 	if err != nil || entry == nil {
 		t.Fatalf("SeriesByURL: %+v (%v)", entry, err)
-	}
-	if entry.Tag != "serie" {
-		t.Errorf("tag = %q, want serie", entry.Tag)
 	}
 	if entry.Skip != 3 {
 		t.Errorf("skip = %d, want 3", entry.Skip)

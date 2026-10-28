@@ -122,12 +122,12 @@ func TestFile(t *testing.T) {
 
 	t.Run("set keeps unrelated lines and comments", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "credentials")
-		writeCredentials(t, path, "username=alice\ntag=my.tag\n# comment\nnotes without equals\n", 0o600)
+		writeCredentials(t, path, "username=alice\nnote=privat\n# comment\nnotes without equals\n", 0o600)
 		f := &File{Path: path}
 		if err := f.Set("geheim"); err != nil {
 			t.Fatalf("Set: %v", err)
 		}
-		want := "username=alice\ntag=my.tag\n# comment\nnotes without equals\npassword=geheim\n"
+		want := "username=alice\nnote=privat\n# comment\nnotes without equals\npassword=geheim\n"
 		if got := readFile(t, path); got != want {
 			t.Errorf("content = %q, want %q", got, want)
 		}
@@ -135,12 +135,12 @@ func TestFile(t *testing.T) {
 
 	t.Run("set replaces an existing password line", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "credentials")
-		writeCredentials(t, path, "username=alice\npassword=alt\ntag=my.tag\n", 0o600)
+		writeCredentials(t, path, "username=alice\npassword=alt\nnote=privat\n", 0o600)
 		f := &File{Path: path}
 		if err := f.Set("neu"); err != nil {
 			t.Fatalf("Set: %v", err)
 		}
-		want := "username=alice\ntag=my.tag\npassword=neu\n"
+		want := "username=alice\nnote=privat\npassword=neu\n"
 		got := readFile(t, path)
 		if got != want {
 			t.Errorf("content = %q, want %q", got, want)
@@ -220,7 +220,7 @@ func TestFile(t *testing.T) {
 		}
 
 		noPasswordPath := filepath.Join(t.TempDir(), "credentials")
-		writeCredentials(t, noPasswordPath, "username=alice\ntag=my.tag\n", 0o600)
+		writeCredentials(t, noPasswordPath, "username=alice\nnote=privat\n", 0o600)
 		if _, err := (&File{Path: noPasswordPath}).Get(); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Get(file without password) = %v, want ErrNotFound", err)
 		}
@@ -250,12 +250,12 @@ func TestFile(t *testing.T) {
 
 	t.Run("clear removes only the password line", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "credentials")
-		writeCredentials(t, path, "username=alice\ntag=my.tag\n# comment\npassword=alt\n", 0o600)
+		writeCredentials(t, path, "username=alice\nnote=privat\n# comment\npassword=alt\n", 0o600)
 		f := &File{Path: path}
 		if err := f.Clear(); err != nil {
 			t.Fatalf("Clear: %v", err)
 		}
-		want := "username=alice\ntag=my.tag\n# comment\n"
+		want := "username=alice\nnote=privat\n# comment\n"
 		got := readFile(t, path)
 		if got != want {
 			t.Errorf("content = %q, want %q", got, want)

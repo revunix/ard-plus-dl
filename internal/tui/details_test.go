@@ -16,7 +16,7 @@ import (
 
 func TestDetailsViewShowsEpisodeState(t *testing.T) {
 	now := time.Now()
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}})
+	model := newModel(Options{Config: &config.Options{}})
 	model.details = store.Series{ID: 1, URL: "https://www.ardplus.de/details/x", Title: "Test Show", Kind: store.KindSeries}
 	model.episodes = []store.KnownEpisode{
 		{EpisodeRef: store.EpisodeRef{ID: "a", Title: "Zweite Folge", Season: 1, Number: 2}},
@@ -54,7 +54,7 @@ func TestDetailsViewWithoutEpisodeNumbers(t *testing.T) {
 func TestDetailsSelectionAndDownload(t *testing.T) {
 	var gotIDs []string
 	model := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		DownloadEpisodes: func(_ context.Context, _ store.Series, ids []string) error {
 			gotIDs = ids
 			return nil
@@ -229,7 +229,7 @@ func TestSeriesSeasonAndEpisodeDownloads(t *testing.T) {
 	}
 	var downloads [][]string
 	model := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		Store:  state,
 		DownloadEpisodes: func(_ context.Context, _ store.Series, ids []string) error {
 			downloads = append(downloads, append([]string(nil), ids...))
@@ -358,7 +358,7 @@ func TestLibraryDownloadShowsQueueAndReturnsToLibrary(t *testing.T) {
 	}
 	called := false
 	model := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		Store:  state,
 		DownloadNew: func(context.Context, store.Series) error {
 			called = true
@@ -388,7 +388,7 @@ func TestLibraryDownloadShowsQueueAndReturnsToLibrary(t *testing.T) {
 func TestEpisodeSelectionNeedsExplicitChoiceToDownload(t *testing.T) {
 	downloads := 0
 	model := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		DownloadEpisodes: func(context.Context, store.Series, []string) error {
 			downloads++
 			return nil
@@ -419,7 +419,7 @@ func TestEpisodeSelectionNeedsExplicitChoiceToDownload(t *testing.T) {
 func TestSelectAllTwiceDownloadsNothing(t *testing.T) {
 	downloads := 0
 	model := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		DownloadEpisodes: func(context.Context, store.Series, []string) error {
 			downloads++
 			return nil
@@ -444,7 +444,7 @@ func TestSelectAllTwiceDownloadsNothing(t *testing.T) {
 }
 
 func TestSelectAllAfterPartialDeselection(t *testing.T) {
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}})
+	model := newModel(Options{Config: &config.Options{}})
 	model.details = store.Series{ID: 1, Title: "Test Show", Kind: store.KindTatort}
 	model.episodes = []store.KnownEpisode{
 		{EpisodeRef: store.EpisodeRef{ID: "a", Title: "Erste"}},
@@ -465,7 +465,7 @@ func TestSelectAllAfterPartialDeselection(t *testing.T) {
 
 func TestEpisodeSelectionFallsBackToOpenEpisodes(t *testing.T) {
 	now := time.Now()
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}})
+	model := newModel(Options{Config: &config.Options{}})
 	model.details = store.Series{ID: 1, Title: "Test Show", Kind: store.KindTatort}
 	model.episodes = []store.KnownEpisode{
 		{EpisodeRef: store.EpisodeRef{ID: "open", Title: "Offen"}},
@@ -543,7 +543,7 @@ func TestProgramRunsSeasonEpisodeDownloadFlow(t *testing.T) {
 	}
 	var downloaded []string
 	model := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		Store:  state,
 		DownloadEpisodes: func(_ context.Context, _ store.Series, ids []string) error {
 			downloaded = append([]string(nil), ids...)

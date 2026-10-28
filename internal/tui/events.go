@@ -94,4 +94,23 @@ func (m *Model) appendLog(line string) {
 	if len(m.log) > 200 {
 		m.log = m.log[len(m.log)-200:]
 	}
+	m.remember(line)
+}
+
+// historyEntry is one line of the protocol with the moment it came in.
+type historyEntry struct {
+	at   time.Time
+	text string
+}
+
+// remember keeps a message for the protocol box. Unlike the log of a
+// download, the protocol lasts for the whole session.
+func (m *Model) remember(line string) {
+	if line == "" {
+		return
+	}
+	m.history = append(m.history, historyEntry{at: time.Now(), text: line})
+	if len(m.history) > 200 {
+		m.history = m.history[len(m.history)-200:]
+	}
 }

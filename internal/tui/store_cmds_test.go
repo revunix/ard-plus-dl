@@ -69,7 +69,7 @@ func TestStoreCmdPendingCountStartsDownload(t *testing.T) {
 	}
 	var downloaded store.Series
 	model := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		Store:  state,
 		DownloadNew: func(_ context.Context, chosen store.Series) error {
 			downloaded = chosen
@@ -109,7 +109,7 @@ func TestStoreCmdPendingCountReportsNoOpenEpisodes(t *testing.T) {
 	entry := storeCmdTestEntry(t, state, "https://www.ardplus.de/details/show", "Test Show", store.KindSeries)
 	called := false
 	model := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		Store:  state,
 		DownloadNew: func(context.Context, store.Series) error {
 			called = true

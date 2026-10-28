@@ -70,7 +70,7 @@ func TestEndToEndNativeDash(t *testing.T) {
 	api := backend.client()
 	client := mediaSrv.Client()
 	application := &App{
-		Config:  &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1, FileTag: "example"},
+		Config:  &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1},
 		Session: backend.session(t, api),
 		API:     api,
 		Fetcher: &Pipeline{
@@ -80,7 +80,6 @@ func TestEndToEndNativeDash(t *testing.T) {
 		},
 		Manager: &download.Manager{
 			DownloadsDir: downloads,
-			FileTag:      "example",
 			Probe: func(ctx context.Context, path string) (string, error) {
 				return media.ProbeMediaTag(ctx, ffprobePath, path)
 			},
@@ -101,7 +100,7 @@ func TestEndToEndNativeDash(t *testing.T) {
 		t.Fatalf("ProbeMediaTag(%s): %v", final, err)
 	}
 	stem := media.MovieNameStem("Test Film", "2020")
-	wantName := stem + "." + media.ApplyFileTag(mediaTag, "example") + ".mp4"
+	wantName := stem + "." + mediaTag + ".mp4"
 	if got := filepath.Base(final); got != wantName {
 		t.Errorf("final name = %q, want %q", got, wantName)
 	}

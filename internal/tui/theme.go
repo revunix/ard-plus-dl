@@ -123,26 +123,36 @@ func applyTheme(mode ThemeMode) {
 	selectedStyle = theme.Selected
 }
 
-// Theme colors follow the ARD Plus palette: deep ARD blue, bright blue and
-// cyan accents on dark terminals, with darker blue counterparts on light ones.
+// Theme colors follow the ARD Plus palette: the bright ARD blue as the one
+// brand color on a near black surface, quiet greys for everything that is
+// not in focus, and darker blue counterparts on light terminals.
 var (
-	colorAccent   = lipgloss.AdaptiveColor{Light: "#003480", Dark: "#6BA8FF"}
-	colorText     = lipgloss.AdaptiveColor{Light: "#001E50", Dark: "#F4F8FF"}
-	colorMuted    = lipgloss.AdaptiveColor{Light: "#41618F", Dark: "#A9C7F0"}
-	colorBorder   = lipgloss.AdaptiveColor{Light: "#6E9BD0", Dark: "#2E62AC"}
-	colorSuccess  = lipgloss.AdaptiveColor{Light: "#00796B", Dark: "#4FE6D6"}
-	colorWarning  = lipgloss.AdaptiveColor{Light: "#7A6A00", Dark: "#D3E85E"}
-	colorDanger   = lipgloss.AdaptiveColor{Light: "#B3122A", Dark: "#FF5C6B"}
-	colorInfo     = lipgloss.AdaptiveColor{Light: "#005EC8", Dark: "#6BA8FF"}
-	colorAccentBg = lipgloss.AdaptiveColor{Light: "#D6E8FF", Dark: "#11477F"}
-	colorNeutral  = lipgloss.AdaptiveColor{Light: "#E4EEFC", Dark: "#1F3D67"}
-	colorOpenBg   = lipgloss.AdaptiveColor{Light: "#E1ECFD", Dark: "#0A3F82"}
-	colorDoneBg   = lipgloss.AdaptiveColor{Light: "#DDF6F2", Dark: "#0A4A44"}
-	colorErrorBg  = lipgloss.AdaptiveColor{Light: "#FFE1E5", Dark: "#5A1620"}
-	// colorPopup is the surface of the help window.
-	colorPopup = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#16233A"}
+	colorAccent  = lipgloss.AdaptiveColor{Light: "#003480", Dark: "#6BA8FF"}
+	colorText    = lipgloss.AdaptiveColor{Light: "#001E50", Dark: "#F4F8FF"}
+	colorMuted   = lipgloss.AdaptiveColor{Light: "#4A5F7E", Dark: "#9DB0CC"}
+	colorSubtle  = lipgloss.AdaptiveColor{Light: "#6B7D96", Dark: "#66768F"}
+	colorBorder  = lipgloss.AdaptiveColor{Light: "#E2E8F0", Dark: "#1E2735"}
+	colorSuccess = lipgloss.AdaptiveColor{Light: "#00796B", Dark: "#7BEBDD"}
+	colorWarning = lipgloss.AdaptiveColor{Light: "#7A6A00", Dark: "#D3E85E"}
+	colorDanger  = lipgloss.AdaptiveColor{Light: "#B3122A", Dark: "#FF8A95"}
+	colorInfo    = lipgloss.AdaptiveColor{Light: "#005EC8", Dark: "#6BA8FF"}
+	// The frames of the boxes. The box the keys work in carries the brand
+	// color, the other boxes stand back in a quiet grey, so the eye finds
+	// the list at once.
+	colorFrame     = lipgloss.AdaptiveColor{Light: "#005EC8", Dark: "#4A8FFF"}
+	colorFrameIdle = lipgloss.AdaptiveColor{Light: "#CBD5E1", Dark: "#364357"}
+	// colorRow is the background of the marked line of a list.
+	colorRow = lipgloss.AdaptiveColor{Light: "#E6EFFF", Dark: "#13233B"}
+	// colorWindowRow is the background of the marked line in a window; the
+	// brand color shines a little through the raised surface.
+	colorWindowRow = lipgloss.AdaptiveColor{Light: "#D6E6FF", Dark: "#1F3657"}
+	// colorScrim is the color of the page behind an open window: the text
+	// stays readable, but steps back.
+	colorScrim = lipgloss.AdaptiveColor{Light: "#A3B0C2", Dark: "#465264"}
+	// colorPopup is the raised surface of a window over the page.
+	colorPopup = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#18202D"}
 	// colorBackground paints the surface of the interface.
-	colorBackground = lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#0F141B"}
+	colorBackground = lipgloss.AdaptiveColor{Light: "#F8FAFC", Dark: "#0A0E14"}
 
 	// ARD Plus brand gradient: deep blue to cyan.
 	colorGradientStartLight = "#003480"
@@ -180,6 +190,13 @@ type appTheme struct {
 	Divider          lipgloss.Style
 	Background       lipgloss.Style
 	Popup            lipgloss.Style
+	Subtle           lipgloss.Style
+	Frame            lipgloss.Style
+	FrameIdle        lipgloss.Style
+	Row              lipgloss.Style
+	WindowRow        lipgloss.Style
+	WindowEdge       lipgloss.Style
+	Scrim            lipgloss.Style
 }
 
 // theme is the active design system.
@@ -197,15 +214,15 @@ func newTheme() appTheme {
 		Warning:          lipgloss.NewStyle().Foreground(colorOf(colorWarning)).Bold(true),
 		Danger:           lipgloss.NewStyle().Foreground(colorOf(colorDanger)).Bold(true),
 		Info:             lipgloss.NewStyle().Foreground(colorOf(colorInfo)),
-		Selected:         lipgloss.NewStyle().Foreground(colorOf(colorAccent)).Bold(true),
-		Cursor:           lipgloss.NewStyle().Foreground(colorOf(colorText)).Background(colorOf(colorAccentBg)).Bold(true),
-		Badge:            lipgloss.NewStyle().Foreground(colorOf(colorAccent)).Background(colorOf(colorNeutral)).Padding(0, 1),
-		Keycap:           lipgloss.NewStyle().Foreground(colorOf(colorAccent)).Background(colorOf(colorNeutral)).Bold(true).Padding(0, 1),
-		PillNeutral:      lipgloss.NewStyle().Foreground(colorOf(colorMuted)).Background(colorOf(colorNeutral)).Padding(0, 1),
-		PillOpen:         lipgloss.NewStyle().Foreground(colorOf(colorInfo)).Background(colorOf(colorOpenBg)).Padding(0, 1),
-		PillDone:         lipgloss.NewStyle().Foreground(colorOf(colorSuccess)).Background(colorOf(colorDoneBg)).Padding(0, 1),
-		PillError:        lipgloss.NewStyle().Foreground(colorOf(colorDanger)).Background(colorOf(colorErrorBg)).Padding(0, 1),
-		CardTitle:        lipgloss.NewStyle().Foreground(colorOf(colorAccent)).Bold(true),
+		Selected:         lipgloss.NewStyle().Foreground(colorOf(colorText)).Bold(true),
+		Cursor:           lipgloss.NewStyle().Foreground(colorOf(colorAccent)),
+		Badge:            lipgloss.NewStyle().Foreground(colorOf(colorMuted)),
+		Keycap:           lipgloss.NewStyle().Foreground(colorOf(colorText)).Bold(true),
+		PillNeutral:      lipgloss.NewStyle().Foreground(colorOf(colorMuted)),
+		PillOpen:         lipgloss.NewStyle().Foreground(colorOf(colorInfo)),
+		PillDone:         lipgloss.NewStyle().Foreground(colorOf(colorSuccess)),
+		PillError:        lipgloss.NewStyle().Foreground(colorOf(colorDanger)),
+		CardTitle:        lipgloss.NewStyle().Foreground(colorOf(colorText)).Bold(true),
 		InputPrompt:      lipgloss.NewStyle().Foreground(colorOf(colorAccent)),
 		InputText:        lipgloss.NewStyle().Foreground(colorOf(colorText)),
 		InputPlaceholder: lipgloss.NewStyle().Foreground(colorOf(colorMuted)),
@@ -214,6 +231,13 @@ func newTheme() appTheme {
 		Divider:          lipgloss.NewStyle().Foreground(colorOf(colorBorder)),
 		Background:       lipgloss.NewStyle().Foreground(colorOf(colorText)).Background(colorOf(colorBackground)),
 		Popup:            lipgloss.NewStyle().Foreground(colorOf(colorText)).Background(colorOf(colorPopup)),
+		Subtle:           lipgloss.NewStyle().Foreground(colorOf(colorSubtle)),
+		Frame:            lipgloss.NewStyle().Foreground(colorOf(colorFrame)),
+		FrameIdle:        lipgloss.NewStyle().Foreground(colorOf(colorFrameIdle)),
+		Row:              lipgloss.NewStyle().Background(colorOf(colorRow)),
+		WindowRow:        lipgloss.NewStyle().Background(colorOf(colorWindowRow)),
+		WindowEdge:       lipgloss.NewStyle().Foreground(colorOf(colorPopup)),
+		Scrim:            lipgloss.NewStyle().Foreground(colorOf(colorScrim)),
 	}
 }
 
@@ -221,7 +245,12 @@ func newTheme() appTheme {
 // surface color of the interface. The scheme always brings its own
 // background, so the view looks the same in every terminal.
 func backgroundSequence() string {
-	rendered := theme.Background.Render(" ")
+	return sequenceOf(theme.Background)
+}
+
+// sequenceOf returns the escape sequence that a style produces.
+func sequenceOf(style lipgloss.Style) string {
+	rendered := style.Render(" ")
 	index := strings.Index(rendered, "m")
 	if index <= 0 {
 		return ""

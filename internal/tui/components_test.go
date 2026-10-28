@@ -30,7 +30,7 @@ func TestComponentsHeader(t *testing.T) {
 		}
 		assertMaxWidth(t, "header", lines, width)
 		first := ansi.Strip(lines[0])
-		for _, want := range []string{"ard-plus-dl", "›", "Bibliothek", "42 Serien"} {
+		for _, want := range []string{"ard-plus-dl", "│", "Bibliothek", "42 Serien"} {
 			if !strings.Contains(first, want) {
 				t.Fatalf("width %d: header %q misses %q", width, first, want)
 			}
@@ -148,11 +148,19 @@ func TestComponentsCard(t *testing.T) {
 	if !strings.Contains(title, "Staffeln") {
 		t.Fatalf("title row misses the title: %q", title)
 	}
-	if got, want := ansi.Strip(card[1]), strings.Repeat("─", width); got != want {
-		t.Fatalf("card rule %q, want %q", got, want)
+	if !strings.HasPrefix(title, "╭─ Staffeln ") || !strings.HasSuffix(title, "╮") {
+		t.Fatalf("title should stand in the upper line of the frame: %q", title)
 	}
-	if !strings.HasPrefix(ansi.Strip(card[2]), "  Zeile eins") {
-		t.Fatalf("card content is not indented: %q", ansi.Strip(card[2]))
+	if got, want := ansi.Strip(card[len(card)-1]), "╰"+strings.Repeat("─", width-2)+"╯"; got != want {
+		t.Fatalf("card bottom %q, want %q", got, want)
+	}
+	if got := ansi.Strip(card[1]); !strings.HasPrefix(got, "│ Zeile eins") || !strings.HasSuffix(got, " │") {
+		t.Fatalf("card content is not framed: %q", got)
+	}
+	for index, line := range card {
+		if got := ansi.StringWidth(line); got != width {
+			t.Fatalf("card line %d is %d cells, want %d", index, got, width)
+		}
 	}
 	if inner := ansi.Strip(strings.Join(card[1:], "\n")); strings.Contains(inner, "Staffeln") {
 		t.Fatalf("title should not repeat inside the card: %q", inner)
@@ -190,10 +198,10 @@ func TestComponentsKeycapAndNotice(t *testing.T) {
 	if !strings.Contains(ansi.Strip(keycap), "enter") {
 		t.Fatalf("keycap %q misses the key", ansi.Strip(keycap))
 	}
-	if !strings.Contains(keycap, "48;2;") {
-		t.Fatalf("keycap has no background: %q", keycap)
+	if !strings.Contains(keycap, "\x1b[1;") {
+		t.Fatalf("keycap is not bold: %q", keycap)
 	}
-	if got, want := ansi.StringWidth(keycap), len("enter")+2; got != want {
+	if got, want := ansi.StringWidth(keycap), len("enter"); got != want {
 		t.Fatalf("keycap width %d, want %d", got, want)
 	}
 
@@ -250,10 +258,10 @@ func TestComponentsProgress(t *testing.T) {
 		if got := ansi.StringWidth(out); got != 20 {
 			t.Fatalf("%d/%d: bar is %d cells, want 20", tc.done, tc.total, got)
 		}
-		if got := strings.Count(out, "█"); got != tc.filled {
+		if got := strings.Count(out, "■"); got != tc.filled {
 			t.Fatalf("%d/%d: %d filled cells, want %d", tc.done, tc.total, got, tc.filled)
 		}
-		if got := strings.Count(out, "░"); got != 20-tc.filled {
+		if got := strings.Count(out, "·"); got != 20-tc.filled {
 			t.Fatalf("%d/%d: %d empty cells, want %d", tc.done, tc.total, got, 20-tc.filled)
 		}
 	}
@@ -261,8 +269,8 @@ func TestComponentsProgress(t *testing.T) {
 	if got := ansi.StringWidth(progressBar(0, 0, 2)); got != 4 {
 		t.Fatalf("narrow bar clamps to 4 cells, got %d", got)
 	}
-	if got := ansi.StringWidth(progressBar(0, 0, 100)); got != 60 {
-		t.Fatalf("wide bar clamps to 60 cells, got %d", got)
+	if got := ansi.StringWidth(progressBar(0, 0, 500)); got != maxBarWidth {
+		t.Fatalf("wide bar clamps to %d cells, got %d", maxBarWidth, got)
 	}
 }
 
@@ -293,15 +301,15 @@ func TestComponentsProgressGradient(t *testing.T) {
 		if got := ansi.StringWidth(out); got != 20 {
 			t.Fatalf("%d%%: bar is %d cells, want 20", tc.done, got)
 		}
-		if got := strings.Count(out, "█"); got != tc.filled {
+		if got := strings.Count(out, "■"); got != tc.filled {
 			t.Fatalf("%d%%: %d filled cells, want %d", tc.done, got, tc.filled)
 		}
-		if got := strings.Count(out, "░"); got != 20-tc.filled {
+		if got := strings.Count(out, "·"); got != 20-tc.filled {
 			t.Fatalf("%d%%: %d empty cells, want %d", tc.done, got, 20-tc.filled)
 		}
 
 		filledPart := out
-		if index := strings.Index(out, "░"); index >= 0 {
+		if index := strings.Index(out, "·"); index >= 0 {
 			filledPart = out[:index]
 		}
 		if strings.TrimSpace(ansi.Strip(filledPart)) == "" {
@@ -316,7 +324,7 @@ func TestComponentsProgressGradient(t *testing.T) {
 		}
 	}
 
-	if got := progressBar(10, 0, 20); strings.Contains(got, "█") {
+	if got := progressBar(10, 0, 20); strings.Contains(got, "■") {
 		t.Fatalf("zero total should render an empty bar: %q", got)
 	}
 }
@@ -385,10 +393,10 @@ func TestComponentsCenterLine(t *testing.T) {
 }
 
 func TestThemeStyles(t *testing.T) {
-	if got, want := ansi.StringWidth(theme.Badge.Render("HD")), 4; got != want {
+	if got, want := ansi.StringWidth(theme.Badge.Render("HD")), 2; got != want {
 		t.Fatalf("badge width %d, want %d", got, want)
 	}
-	if got, want := ansi.StringWidth(theme.PillDone.Render("Fertig")), 8; got != want {
+	if got, want := ansi.StringWidth(theme.PillDone.Render("Fertig")), 6; got != want {
 		t.Fatalf("pill width %d, want %d", got, want)
 	}
 	if got := ansi.Strip(renderSection("Downloads")); got != "· DOWNLOADS" {

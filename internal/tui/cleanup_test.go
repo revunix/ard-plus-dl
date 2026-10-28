@@ -16,7 +16,7 @@ import (
 // downloads directory may be deleted.
 func TestDownloadPathCheckKeepsFilesOutsideSafe(t *testing.T) {
 	dir := t.TempDir()
-	model := newModel(Options{Config: &config.Options{FileTag: "example", DownloadsDir: dir}})
+	model := newModel(Options{Config: &config.Options{DownloadsDir: dir}})
 
 	if err := model.checkDownloadPath(filepath.Join(dir, "Serie", "Folge.mp4")); err != nil {
 		t.Fatalf("a file inside the downloads directory must be allowed: %v", err)
@@ -66,7 +66,7 @@ func TestRemovingAFileResetsTheEpisode(t *testing.T) {
 		t.Fatalf("mark downloaded: %v", err)
 	}
 
-	model := newModel(Options{Config: &config.Options{FileTag: "example", DownloadsDir: downloads}, Store: state})
+	model := newModel(Options{Config: &config.Options{DownloadsDir: downloads}, Store: state})
 	model.screen = ScreenQueue
 	model.jobs = []job{{label: "Test Show S01E01 - Erste", path: file, status: "fertig", episodeID: "e1", seriesID: seriesID}}
 
@@ -135,7 +135,7 @@ func TestResettingAnEntryClearsFilesAndHistory(t *testing.T) {
 		t.Fatalf("mark downloaded: %v", err)
 	}
 
-	model := newModel(Options{Config: &config.Options{FileTag: "example", DownloadsDir: downloads}, Store: state})
+	model := newModel(Options{Config: &config.Options{DownloadsDir: downloads}, Store: state})
 	model.screen = ScreenLibrary
 	model.library = entries
 

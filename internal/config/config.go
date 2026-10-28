@@ -37,7 +37,6 @@ type Options struct {
 	ForceRedownload bool
 	Username        string
 	Password        string
-	FileTag         string
 
 	// Skip is the number of leading episodes skipped in the first processed
 	// season; 1 means "do not skip".
@@ -264,20 +263,20 @@ func LibraryPath(env Env, workDir string) string {
 	return filepath.Join(StateDir(env, workDir), "library.db")
 }
 
-// LoadCredentialsFile reads username/password/tag from a credentials file. The
+// LoadCredentialsFile reads username and password from a credentials file. The
 // first value wins for each key. A group- or world-readable file produces a
 // warning on stderr (Unix only).
-func LoadCredentialsFile(path string, stderr io.Writer) (username, password, tag string) {
+func LoadCredentialsFile(path string, stderr io.Writer) (username, password string) {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
-		return "", "", ""
+		return "", ""
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		fmt.Fprintf(stderr, "Warning: credentials file %s is readable by group/others (chmod 600 recommended).\n", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", ""
+		return "", ""
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSuffix(line, "\r")
@@ -297,13 +296,9 @@ func LoadCredentialsFile(path string, stderr io.Writer) (username, password, tag
 			if password == "" {
 				password = value
 			}
-		case "tag", "ARD_PLUS_TAG":
-			if tag == "" {
-				tag = value
-			}
 		}
 	}
-	return username, password, tag
+	return username, password
 }
 
 // ResolveCredentials fills missing credentials from the environment and the
@@ -315,35 +310,16 @@ func ResolveCredentials(o *Options, env Env, stderr io.Writer) {
 	if o.Password == "" {
 		o.Password = env("ARD_PLUS_PASSWORD")
 	}
-	if o.FileTag == "" {
-		o.FileTag = env("ARD_PLUS_TAG")
-	}
 	o.CredentialsFile = CredentialsPath(env)
-	if o.Username == "" || o.Password == "" || o.FileTag == "" {
-		username, password, tag := LoadCredentialsFile(o.CredentialsFile, stderr)
+	if o.Username == "" || o.Password == "" {
+		username, password := LoadCredentialsFile(o.CredentialsFile, stderr)
 		if o.Username == "" {
 			o.Username = username
 		}
 		if o.Password == "" {
 			o.Password = password
 		}
-		if o.FileTag == "" {
-			o.FileTag = tag
-		}
 	}
-}
-
-var fileTagPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$`)
-
-// ValidateFileTag enforces the mandatory Datei-Tag format.
-func ValidateFileTag(tag string) error {
-	if tag == "" {
-		return fmt.Errorf("Datei-Tag missing! Set ARD_PLUS_TAG, add 'tag=...' to %s, or answer the prompt.", CredentialsPath(OSEnv))
-	}
-	if !fileTagPattern.MatchString(tag) {
-		return fmt.Errorf("Invalid Datei-Tag: %s (allowed: letters, digits, '.', '_', '-')", tag)
-	}
-	return nil
 }
 
 var contentURLPattern = regexp.MustCompile(`^https?://([^/]+)(/.*)?$`)

@@ -245,16 +245,16 @@ func TestLoadCredentialsFile(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "credentials")
 		writeFile(t, path, "# comment line\nusername=file-user\n\npassword=file-pass\n", 0o600)
-		username, password, tag := LoadCredentialsFile(path, &bytes.Buffer{})
-		if username != "file-user" || password != "file-pass" || tag != "" {
-			t.Fatalf("got %q/%q/%q", username, password, tag)
+		username, password := LoadCredentialsFile(path, &bytes.Buffer{})
+		if username != "file-user" || password != "file-pass" {
+			t.Fatalf("got %q/%q", username, password)
 		}
 	})
 	t.Run("CRLF line endings are stripped", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "credentials")
 		writeFile(t, path, "username=crlf-user\r\npassword=crlf-pass\r\n", 0o600)
-		username, password, _ := LoadCredentialsFile(path, &bytes.Buffer{})
+		username, password := LoadCredentialsFile(path, &bytes.Buffer{})
 		if username != "crlf-user" || password != "crlf-pass" {
 			t.Fatalf("got %q/%q", username, password)
 		}
@@ -262,26 +262,26 @@ func TestLoadCredentialsFile(t *testing.T) {
 	t.Run("the first value wins", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "credentials")
-		writeFile(t, path, "username=first\npassword=first-pass\ntag=first-tag\nusername=second\npassword=second-pass\ntag=second-tag\n", 0o600)
-		username, password, tag := LoadCredentialsFile(path, &bytes.Buffer{})
-		if username != "first" || password != "first-pass" || tag != "first-tag" {
-			t.Fatalf("got %q/%q/%q", username, password, tag)
+		writeFile(t, path, "username=first\npassword=first-pass\nusername=second\npassword=second-pass\n", 0o600)
+		username, password := LoadCredentialsFile(path, &bytes.Buffer{})
+		if username != "first" || password != "first-pass" {
+			t.Fatalf("got %q/%q", username, password)
 		}
 	})
 	t.Run("ARD_PLUS_* aliases are accepted", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "credentials")
-		writeFile(t, path, "ARD_PLUS_USER=env-style-user\nARD_PLUS_PASSWORD=env-style-pass\nARD_PLUS_TAG=env-style-tag\n", 0o600)
-		username, password, tag := LoadCredentialsFile(path, &bytes.Buffer{})
-		if username != "env-style-user" || password != "env-style-pass" || tag != "env-style-tag" {
-			t.Fatalf("got %q/%q/%q", username, password, tag)
+		writeFile(t, path, "ARD_PLUS_USER=env-style-user\nARD_PLUS_PASSWORD=env-style-pass\n", 0o600)
+		username, password := LoadCredentialsFile(path, &bytes.Buffer{})
+		if username != "env-style-user" || password != "env-style-pass" {
+			t.Fatalf("got %q/%q", username, password)
 		}
 	})
 	t.Run("a missing file yields nothing", func(t *testing.T) {
 		dir := t.TempDir()
-		username, password, tag := LoadCredentialsFile(filepath.Join(dir, "does-not-exist"), &bytes.Buffer{})
-		if username != "" || password != "" || tag != "" {
-			t.Fatalf("got %q/%q/%q", username, password, tag)
+		username, password := LoadCredentialsFile(filepath.Join(dir, "does-not-exist"), &bytes.Buffer{})
+		if username != "" || password != "" {
+			t.Fatalf("got %q/%q", username, password)
 		}
 	})
 	t.Run("warns about loose permissions", func(t *testing.T) {
@@ -318,12 +318,11 @@ func TestResolveCredentials(t *testing.T) {
 		env := envFrom(map[string]string{
 			"ARD_PLUS_USER":             "env-user",
 			"ARD_PLUS_PASSWORD":         "env-pass",
-			"ARD_PLUS_TAG":              "envtag",
 			"ARD_PLUS_CREDENTIALS_FILE": filepath.Join(dir, "none"),
 		})
 		o := &Options{}
 		ResolveCredentials(o, env, &bytes.Buffer{})
-		if o.Username != "env-user" || o.Password != "env-pass" || o.FileTag != "envtag" {
+		if o.Username != "env-user" || o.Password != "env-pass" {
 			t.Fatalf("got %+v", o)
 		}
 	})
@@ -343,11 +342,11 @@ func TestResolveCredentials(t *testing.T) {
 	t.Run("the credentials file is the last fallback", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "credentials")
-		writeFile(t, path, "username=file-user\npassword=file-pass\ntag=filetag\n", 0o600)
+		writeFile(t, path, "username=file-user\npassword=file-pass\n", 0o600)
 		env := envFrom(map[string]string{"ARD_PLUS_CREDENTIALS_FILE": path})
 		o := &Options{}
 		ResolveCredentials(o, env, &bytes.Buffer{})
-		if o.Username != "file-user" || o.Password != "file-pass" || o.FileTag != "filetag" {
+		if o.Username != "file-user" || o.Password != "file-pass" {
 			t.Fatalf("got %+v", o)
 		}
 		if o.CredentialsFile != path {
@@ -426,44 +425,6 @@ func TestTokenPath(t *testing.T) {
 		want := filepath.Join(workDir, ".ard-plus-dl", "token")
 		if got != want {
 			t.Fatalf("got %q, want %q", got, want)
-		}
-	})
-}
-
-func TestValidateFileTag(t *testing.T) {
-	t.Run("valid tags", func(t *testing.T) {
-		for _, tag := range []string{"example", "ok.group-1_x", "A", "0abc", "abcdefghijklmnop"} {
-			t.Run(tag, func(t *testing.T) {
-				if err := ValidateFileTag(tag); err != nil {
-					t.Fatalf("ValidateFileTag(%q) = %v", tag, err)
-				}
-			})
-		}
-	})
-	t.Run("invalid tags", func(t *testing.T) {
-		for _, tag := range []string{"bad/tag", "bad group", "abcdefghijklmnopq", "-lead", ".lead", "ümlaut"} {
-			t.Run(tag, func(t *testing.T) {
-				err := ValidateFileTag(tag)
-				if err == nil {
-					t.Fatalf("ValidateFileTag(%q) succeeded", tag)
-				}
-				want := "Invalid Datei-Tag: " + tag + " (allowed: letters, digits, '.', '_', '-')"
-				if err.Error() != want {
-					t.Fatalf("error = %q, want %q", err, want)
-				}
-			})
-		}
-	})
-	t.Run("a missing tag is rejected", func(t *testing.T) {
-		err := ValidateFileTag("")
-		if err == nil {
-			t.Fatal("expected an error")
-		}
-		if !strings.HasPrefix(err.Error(), "Datei-Tag missing! Set ARD_PLUS_TAG") {
-			t.Fatalf("error = %q", err)
-		}
-		if !strings.Contains(err.Error(), "tag=...") {
-			t.Fatalf("error = %q", err)
 		}
 	})
 }

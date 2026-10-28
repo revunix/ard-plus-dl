@@ -17,14 +17,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/revunix/ard-plus-dl/internal/config"
 	"github.com/revunix/ard-plus-dl/internal/store"
 )
 
 func (m *Model) readyForDownload() error {
-	if err := config.ValidateFileTag(m.cfg.FileTag); err != nil {
-		return err
-	}
 	if m.needsLogin && (m.cfg.Username == "" || m.cfg.Password == "") {
 		return fmt.Errorf("Credentials missing! Set ARD_PLUS_USER/ARD_PLUS_PASSWORD or enter them in the form.")
 	}
@@ -326,6 +322,7 @@ func remainingLabel(remaining time.Duration) string {
 func (m *Model) setToast(message string, level toastLevel) {
 	m.toast = message
 	m.toastLevel = level
+	m.remember(message)
 }
 
 // clearToast removes the toast right away.
@@ -394,7 +391,20 @@ func (m *Model) header(title, subtitle string) []string {
 	if m.busy {
 		status = m.spinnerView() + " " + m.statusText()
 	}
-	return renderHeader(m.frameWidth(), title, subtitle, status)
+	lines := renderHeader(m.frameWidth(), title, subtitle, status)
+	if m.headerGap() > 0 {
+		// A free line between the head and the boxes, like in btop.
+		lines = append(lines, "")
+	}
+	return lines
+}
+
+// headerGap returns the free lines below the head.
+func (m *Model) headerGap() int {
+	if m.height <= 0 || m.height >= 16 {
+		return 1
+	}
+	return 0
 }
 
 // searchTerm returns the term the library is filtered by.
@@ -439,7 +449,7 @@ func (m *Model) libVisible() int {
 		return 20
 	}
 	// Header, card, column heading and footer take the rest.
-	return max(1, m.height-5-m.footerHeight(m.frameWidth(), m.hints().short))
+	return max(1, m.height-5-m.headerGap()-m.lowerRows()-m.footerHeight(m.frameWidth(), m.hints().short))
 }
 
 // seriesVisible is the number of season rows that fit on the selection screen.
@@ -461,7 +471,7 @@ func (m *Model) detailVisible() int {
 		// The narrow layout shows the counts above the card.
 		extra = 1
 	}
-	return max(1, m.height-4-footer-extra)
+	return max(1, m.height-4-m.headerGap()-m.lowerRows()-footer-extra)
 }
 
 func (m *Model) clampLibOffset() {
@@ -584,7 +594,7 @@ func (m *Model) clampSeasonOffset() {
 
 // resizeFields keeps the input widths within the terminal.
 func (m *Model) resizeFields() {
-	if len(m.fields) != 4 {
+	if len(m.fields) != 3 {
 		return
 	}
 	width := m.contentWidth()
@@ -598,7 +608,6 @@ func (m *Model) resizeFields() {
 	m.fields[0].Width = min(base, 100)
 	m.fields[1].Width = min(base, 60)
 	m.fields[2].Width = min(base, 60)
-	m.fields[3].Width = max(8, min(base, 40))
 }
 
 func (m *Model) selectedEpisodeList() []store.KnownEpisode {
@@ -663,8 +672,7 @@ func (m *Model) downloadEpisodeIDs(ids []string, emptyMessage string) tea.Cmd {
 		return nil
 	}
 	if err := m.readyForDownload(); err != nil {
-		m.fields[3].SetValue(m.cfg.FileTag)
-		m.focusField(3)
+		m.focusField(1)
 		m.startErr = err
 		m.screen = ScreenStart
 		return nil

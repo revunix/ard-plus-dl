@@ -85,24 +85,14 @@ func TestStartScreenValidation(t *testing.T) {
 		t.Fatalf("startErr = %v, want the unsupported host reason", m.startErr)
 	}
 
-	// A valid URL without a tag is rejected.
+	// A valid URL starts the run.
 	m.fields[0].SetValue("https://www.ardplus.de/details/abc")
-	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	if m.startErr == nil || m.startErr.Error() != config.ValidateFileTag("").Error() {
-		t.Fatalf("startErr = %v, want the missing tag reason", m.startErr)
-	}
-
-	// A valid URL with a valid tag starts the run.
-	m.fields[3].SetValue("example")
 	m, cmd := update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if m.startErr != nil {
 		t.Fatalf("startErr = %v, want nil", m.startErr)
 	}
 	if cfg.URL != "https://www.ardplus.de/details/abc" {
 		t.Errorf("cfg.URL = %q, want the normalized URL", cfg.URL)
-	}
-	if cfg.FileTag != "example" {
-		t.Errorf("cfg.FileTag = %q, want example", cfg.FileTag)
 	}
 	if m.screen != ScreenLoading {
 		t.Errorf("screen = %v, want ScreenLoading", m.screen)
@@ -119,7 +109,6 @@ func TestStartScreenRequiresCredentials(t *testing.T) {
 	cfg := &config.Options{}
 	m := newModel(Options{Config: cfg, StartScreen: true, NeedsLogin: true, Run: noopRun})
 	m.fields[0].SetValue("https://www.ardplus.de/details/abc")
-	m.fields[3].SetValue("example")
 
 	m, _ = update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if m.startErr == nil || m.startErr.Error() != "Credentials missing! Set ARD_PLUS_USER/ARD_PLUS_PASSWORD or enter them above." {
@@ -430,7 +419,7 @@ func TestRunDoneClearsRunningFlag(t *testing.T) {
 
 func TestLibrarySettingsDoesNotStartRun(t *testing.T) {
 	called := false
-	cfg := &config.Options{URL: "https://www.ardplus.de/details/alt", FileTag: "example"}
+	cfg := &config.Options{URL: "https://www.ardplus.de/details/alt"}
 	m := newModel(Options{
 		Config: cfg,
 		Run: func(context.Context) error {
@@ -463,7 +452,7 @@ func TestLibrarySettingsDoesNotStartRun(t *testing.T) {
 func TestLibraryAddRequiresURL(t *testing.T) {
 	called := false
 	m := newModel(Options{
-		Config: &config.Options{FileTag: "example"},
+		Config: &config.Options{},
 		Run: func(context.Context) error {
 			called = true
 			return nil
@@ -504,11 +493,12 @@ func TestLibraryAddRequiresURL(t *testing.T) {
 	}
 }
 
-func TestLibraryDownloadMissingTagContinuesDownload(t *testing.T) {
+func TestLibraryDownloadMissingCredentialsContinuesDownload(t *testing.T) {
 	called := false
 	entry := store.Series{ID: 7, URL: "https://www.ardplus.de/details/x", Title: "Test Show", Kind: store.KindSeries, NewCount: 1}
 	m := newModel(Options{
-		Config: &config.Options{},
+		Config:     &config.Options{},
+		NeedsLogin: true,
 		DownloadNew: func(context.Context, store.Series) error {
 			called = true
 			return nil
@@ -536,7 +526,8 @@ func TestLibraryDownloadMissingTagContinuesDownload(t *testing.T) {
 		t.Errorf("URL field = %q, want the entry URL", got)
 	}
 
-	m.fields[3].SetValue("example")
+	m.fields[1].SetValue("user")
+	m.fields[2].SetValue("pass")
 	m, cmd = update(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("the pending library download must return a command")
@@ -563,7 +554,7 @@ func TestStartWithConfiguredURLRunsImmediately(t *testing.T) {
 	}
 	called := false
 	model := newModel(Options{
-		Config:    &config.Options{URL: "https://www.ardplus.de/details/neu", FileTag: "example"},
+		Config:    &config.Options{URL: "https://www.ardplus.de/details/neu"},
 		AutoStart: true,
 		Store:     state,
 		Run: func(context.Context) error {
@@ -594,7 +585,7 @@ func TestPrefilledURLDoesNotAutoStart(t *testing.T) {
 	}
 	called := false
 	model := newModel(Options{
-		Config: &config.Options{URL: "https://www.ardplus.de/details/last", FileTag: "example"},
+		Config: &config.Options{URL: "https://www.ardplus.de/details/last"},
 		Store:  state,
 		Run: func(context.Context) error {
 			called = true
@@ -846,12 +837,12 @@ func TestHelpToggle(t *testing.T) {
 func TestResizeFields(t *testing.T) {
 	cases := []struct {
 		width int
-		want  [4]int
+		want  [3]int
 	}{
-		{120, [4]int{100, 60, 60, 40}},
-		{60, [4]int{40, 40, 40, 40}},
-		{30, [4]int{10, 10, 10, 10}},
-		{0, [4]int{60, 60, 60, 40}},
+		{120, [3]int{98, 60, 60}},
+		{60, [3]int{38, 38, 38}},
+		{30, [3]int{10, 10, 10}},
+		{0, [3]int{60, 60, 60}},
 	}
 	for _, tc := range cases {
 		m := newModel(Options{Config: &config.Options{}, Run: noopRun})
@@ -938,7 +929,7 @@ func TestCheckDoneNotes(t *testing.T) {
 func TestFormEnterBlockedWhileBusy(t *testing.T) {
 	called := false
 	m := newModel(Options{
-		Config:      &config.Options{FileTag: "example"},
+		Config:      &config.Options{},
 		StartScreen: true,
 		Run: func(context.Context) error {
 			called = true

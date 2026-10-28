@@ -455,7 +455,6 @@ func newHarnessWith(t *testing.T, b *backend, opts *config.Options) *harness {
 	api := b.client()
 	manager := &download.Manager{
 		DownloadsDir: downloads,
-		FileTag:      opts.FileTag,
 		Force:        opts.ForceRedownload,
 		Probe:        func(context.Context, string) (string, error) { return harnessMediaTag, nil },
 		// The CLI points this at stdout; the tests record it like the app
@@ -487,7 +486,7 @@ const harnessMediaTag = "German.AAC.1080p.Web-DL.x264"
 // ("Test Film", 2020) with the harness media tag.
 func (h *harness) finalMoviePath() string {
 	stem := "Test.Film.2020"
-	return filepath.Join(h.downloads, stem, stem+"."+harnessMediaTag+"-example.mp4")
+	return filepath.Join(h.downloads, stem, stem+"."+harnessMediaTag+".mp4")
 }
 
 func assertFileContent(t *testing.T, path, want string) {
@@ -524,7 +523,7 @@ func mp4Files(t *testing.T, root string) []string {
 }
 
 func TestMovieFlowDownloadsAndFinalizes(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(func(operation string, variables map[string]any) (string, int) {
 		if operation != "MovieDetails" {
@@ -593,7 +592,7 @@ func TestMovieFlowDownloadsAndFinalizes(t *testing.T) {
 }
 
 func TestMovieFlowWithoutDashURLFails(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(func(string, map[string]any) (string, int) {
 		return dataResponse(map[string]any{
@@ -615,7 +614,7 @@ func TestMovieFlowWithoutDashURLFails(t *testing.T) {
 }
 
 func TestMovieFlowAuthorizationFailureStopsDownload(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setPlayback("", true) // answers null, so the renewal also fails
 	h.backend.setGraphQL(func(string, map[string]any) (string, int) {
@@ -638,7 +637,7 @@ func TestMovieFlowAuthorizationFailureStopsDownload(t *testing.T) {
 }
 
 func TestMovieFlowMuxFailureLeavesNoOutput(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.fetcher.muxErr = errors.New("ffmpeg exploded")
 	h.backend.setGraphQL(func(string, map[string]any) (string, int) {
@@ -658,7 +657,7 @@ func TestMovieFlowMuxFailureLeavesNoOutput(t *testing.T) {
 }
 
 func TestMovieFlowSkipsExistingOutput(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/m1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	final := h.finalMoviePath()
 	if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
@@ -713,7 +712,7 @@ func seriesBackend(seasons map[string][]map[string]any) func(string, map[string]
 }
 
 func TestSeriesFlowEpisodeFailureIsolation(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(seriesBackend(map[string][]map[string]any{
 		"season-1": {
@@ -745,10 +744,10 @@ func TestSeriesFlowEpisodeFailureIsolation(t *testing.T) {
 	if len(files) != 2 {
 		t.Fatalf("mp4 files = %v, want the two successful episodes", files)
 	}
-	seasonDir := "Test.Show.S01." + harnessMediaTag + "-example"
+	seasonDir := "Test.Show.S01." + harnessMediaTag 
 	for _, name := range []string{
-		filepath.Join(h.downloads, seasonDir, "Test.Show.S01E01."+harnessMediaTag+"-example.mp4"),
-		filepath.Join(h.downloads, seasonDir, "Test.Show.S01E03."+harnessMediaTag+"-example.mp4"),
+		filepath.Join(h.downloads, seasonDir, "Test.Show.S01E01."+harnessMediaTag+".mp4"),
+		filepath.Join(h.downloads, seasonDir, "Test.Show.S01E03."+harnessMediaTag+".mp4"),
 	} {
 		if _, err := os.Stat(name); err != nil {
 			t.Errorf("missing %s: %v", name, err)
@@ -763,7 +762,7 @@ func TestSeriesFlowEpisodeFailureIsolation(t *testing.T) {
 }
 
 func TestSeriesSkipAppliesOnlyToFirstSeason(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 2, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 2}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(seriesBackend(map[string][]map[string]any{
 		"season-1": {
@@ -805,7 +804,7 @@ func TestSeriesSkipAppliesOnlyToFirstSeason(t *testing.T) {
 }
 
 func TestSeriesSkipExistingEpisodeEmitsSkippedEvent(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(seriesBackend(map[string][]map[string]any{
 		"season-1": {
@@ -815,8 +814,8 @@ func TestSeriesSkipExistingEpisodeEmitsSkippedEvent(t *testing.T) {
 	}))
 
 	// The finished output of the first episode makes Prepare report a skip.
-	seasonDir := "Test.Show.S01." + harnessMediaTag + "-example"
-	final := filepath.Join(h.downloads, seasonDir, "Test.Show.S01E01."+harnessMediaTag+"-example.mp4")
+	seasonDir := "Test.Show.S01." + harnessMediaTag 
+	final := filepath.Join(h.downloads, seasonDir, "Test.Show.S01E01."+harnessMediaTag+".mp4")
 	if err := os.MkdirAll(filepath.Dir(final), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -843,7 +842,7 @@ func TestSeriesSkipExistingEpisodeEmitsSkippedEvent(t *testing.T) {
 }
 
 func TestSeriesEpisodeNumberPadding(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(seriesBackend(map[string][]map[string]any{
 		"season-1": {
@@ -855,9 +854,9 @@ func TestSeriesEpisodeNumberPadding(t *testing.T) {
 	if err := h.run(); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	seasonDir := "Test.Show.S01." + harnessMediaTag + "-example"
+	seasonDir := "Test.Show.S01." + harnessMediaTag 
 	for _, name := range []string{"Test.Show.S01E001", "Test.Show.S01E100"} {
-		path := filepath.Join(h.downloads, seasonDir, name+"."+harnessMediaTag+"-example.mp4")
+		path := filepath.Join(h.downloads, seasonDir, name+"."+harnessMediaTag+".mp4")
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("missing %s: %v", path, err)
 		}
@@ -865,7 +864,7 @@ func TestSeriesEpisodeNumberPadding(t *testing.T) {
 }
 
 func TestSeriesEmptySeasonFails(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(seriesBackend(map[string][]map[string]any{"season-1": {}}))
 
@@ -883,7 +882,7 @@ func TestSeriesEmptySeasonFails(t *testing.T) {
 }
 
 func TestSeriesAutomaticSelectsAllSeasons(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(seriesBackend(map[string][]map[string]any{
 		"season-1": {episodeData("a1", 1, "Eins", "https://cdn.test/a1.mpd")},
@@ -902,7 +901,7 @@ func TestSeriesAutomaticSelectsAllSeasons(t *testing.T) {
 }
 
 func TestSeriesInteractiveSelection(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: false, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/details/s1", Automatic: false, Skip: 1}
 	h := newHarness(t, opts)
 	h.ui.seasons = []int{2}
 	h.backend.setGraphQL(seriesBackend(map[string][]map[string]any{
@@ -962,7 +961,7 @@ func tatortBackend() func(string, map[string]any) (string, int) {
 }
 
 func TestTatortFlowAutomaticDownloadsEveryEpisode(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setCategory(func(slug string) (string, int) {
 		if slug != "tatort-koeln" {
@@ -983,8 +982,8 @@ func TestTatortFlowAutomaticDownloadsEveryEpisode(t *testing.T) {
 		t.Fatalf("Fetch calls = %v, want both episodes", fetches)
 	}
 	for _, name := range []string{
-		"Tatort.koeln.Folge.7.2023." + harnessMediaTag + "-example.mp4",
-		"Tatort.koeln.Folge.8.2024." + harnessMediaTag + "-example.mp4",
+		"Tatort.koeln.Folge.7.2023." + harnessMediaTag + ".mp4",
+		"Tatort.koeln.Folge.8.2024." + harnessMediaTag + ".mp4",
 	} {
 		path := filepath.Join(h.downloads, name)
 		if _, err := os.Stat(path); err != nil {
@@ -1001,7 +1000,7 @@ func TestTatortFlowAutomaticDownloadsEveryEpisode(t *testing.T) {
 }
 
 func TestTatortFlowAppliesInteractiveSkipOffset(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: false, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: false, Skip: 1}
 	h := newHarness(t, opts)
 	h.ui.tatortSkip = 1
 	h.backend.setCategory(func(string) (string, int) {
@@ -1019,7 +1018,7 @@ func TestTatortFlowAppliesInteractiveSkipOffset(t *testing.T) {
 	if len(fetches) != 1 || !strings.Contains(fetches[0], "t2.mpd") {
 		t.Fatalf("Fetch calls = %v, want only the second episode", fetches)
 	}
-	if _, err := os.Stat(filepath.Join(h.downloads, "Tatort.koeln.Folge.7.2023."+harnessMediaTag+"-example.mp4")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(h.downloads, "Tatort.koeln.Folge.7.2023."+harnessMediaTag+".mp4")); !os.IsNotExist(err) {
 		t.Errorf("skipped episode must not be downloaded, stat err = %v", err)
 	}
 	if logs := strings.Join(h.ui.logs(), "\n"); !strings.Contains(logs, "Überspringe 1 Episode(n).") {
@@ -1028,7 +1027,7 @@ func TestTatortFlowAppliesInteractiveSkipOffset(t *testing.T) {
 }
 
 func TestTatortFlowRecordsUnparsableEpisodeURL(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setCategory(func(string) (string, int) {
 		return tatortHTML("https://www.ardplus.de/krimi/ohne-id"), http.StatusOK
@@ -1087,7 +1086,7 @@ func TestBatchRecordsSuccessAndFailure(t *testing.T) {
 		"# a comment\n\n  https://www.ardplus.de/details/ok  \n"+
 			"https://www.ardplus.de/details/bad\r\n"+
 			"https://example.com/details/ignored\n")
-	opts := &config.Options{LinksFile: linksPath, Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{LinksFile: linksPath, Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(func(_ string, variables map[string]any) (string, int) {
 		if variables["movieId"] == "ok" {
@@ -1156,7 +1155,7 @@ func TestBatchRecordsSuccessAndFailure(t *testing.T) {
 func TestBatchAllLinksSucceed(t *testing.T) {
 	dir := t.TempDir()
 	linksPath := writeLinks(t, dir, "https://www.ardplus.de/details/ok\n# done\n")
-	opts := &config.Options{LinksFile: linksPath, Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{LinksFile: linksPath, Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setGraphQL(func(_ string, variables map[string]any) (string, int) {
 		return dataResponse(map[string]any{
@@ -1186,7 +1185,7 @@ func TestBatchAllLinksSucceed(t *testing.T) {
 func TestBatchEmptyLinksFileSucceeds(t *testing.T) {
 	dir := t.TempDir()
 	linksPath := writeLinks(t, dir, "# nothing to do\n\n")
-	opts := &config.Options{LinksFile: linksPath, Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{LinksFile: linksPath, Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 
 	if err := h.run(); err != nil {
@@ -1226,7 +1225,7 @@ func TestReadLinksMissingFile(t *testing.T) {
 // An episode without a production number must still be recognised as
 // downloaded on the next run.
 func TestTatortFlowSkipsAnEpisodeWithoutProductionNumber(t *testing.T) {
-	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: true, Skip: 1, FileTag: "example"}
+	opts := &config.Options{URL: "https://www.ardplus.de/kategorie/tatort-koeln", Automatic: true, Skip: 1}
 	h := newHarness(t, opts)
 	h.backend.setCategory(func(string) (string, int) {
 		return tatortHTML("https://www.ardplus.de/details/t1"), http.StatusOK
@@ -1250,7 +1249,7 @@ func TestTatortFlowSkipsAnEpisodeWithoutProductionNumber(t *testing.T) {
 	if fetches := h.fetcher.fetchList(); len(fetches) != 1 {
 		t.Fatalf("Fetch calls = %v, want one episode", fetches)
 	}
-	final := filepath.Join(h.downloads, "Tatort.koeln.2023."+harnessMediaTag+"-example.mp4")
+	final := filepath.Join(h.downloads, "Tatort.koeln.2023."+harnessMediaTag+".mp4")
 	if _, err := os.Stat(final); err != nil {
 		t.Fatalf("missing %s: %v", final, err)
 	}

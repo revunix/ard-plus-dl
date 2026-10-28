@@ -34,7 +34,7 @@ func categoryPage(ids ...string) string {
 // TestHubFlowUsesSelectedCategories verifies that the hub resolves to a
 // category choice and only the chosen categories are processed.
 func TestHubFlowUsesSelectedCategories(t *testing.T) {
-	h := newHarness(t, &config.Options{Skip: 1, FileTag: "example"})
+	h := newHarness(t, &config.Options{Skip: 1})
 	h.backend.setHub(func() (string, int) {
 		return hubPage([2]string{"Tatort Koeln", "tatort-koeln"}, [2]string{"Tatort Hamburg", "tatort-hamburg"}), 200
 	})
@@ -73,7 +73,7 @@ func TestHubFlowUsesSelectedCategories(t *testing.T) {
 // TestHubFlowAutomaticUsesAllCategories covers --automatic and the
 // download-new path, which must not prompt.
 func TestHubFlowAutomaticUsesAllCategories(t *testing.T) {
-	h := newHarness(t, &config.Options{Automatic: true, Skip: 1, FileTag: "example"})
+	h := newHarness(t, &config.Options{Automatic: true, Skip: 1})
 	h.backend.setHub(func() (string, int) {
 		return hubPage([2]string{"Tatort Koeln", "tatort-koeln"}, [2]string{"Tatort Hamburg", "tatort-hamburg"}), 200
 	})
@@ -150,7 +150,7 @@ func TestCheckEntryExpandsTatortHub(t *testing.T) {
 
 // TestTatortShortURLCanonicalised covers /tatort-<stadt>.
 func TestTatortShortURLCanonicalised(t *testing.T) {
-	h := newHarness(t, &config.Options{Automatic: true, Skip: 1, FileTag: "example"})
+	h := newHarness(t, &config.Options{Automatic: true, Skip: 1})
 	h.backend.setCategory(func(slug string) (string, int) {
 		if slug != "tatort-koeln" {
 			t.Errorf("slug = %q, want tatort-koeln", slug)
@@ -187,7 +187,7 @@ func movieDetailsHandler(movies map[string]map[string]string) func(string, map[s
 // DownloadNew drives a fixed selection, so it must never prompt, even when the
 // configuration is interactive (this used to panic on a nil UI).
 func TestDownloadNewTatortDoesNotPrompt(t *testing.T) {
-	h := newHarness(t, &config.Options{Skip: 1, FileTag: "example"})
+	h := newHarness(t, &config.Options{Skip: 1})
 	state, err := store.Open(t.TempDir() + "/library.db")
 	if err != nil {
 		t.Fatalf("store: %v", err)

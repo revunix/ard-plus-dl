@@ -75,7 +75,6 @@ func (a *App) movieFlow(ctx context.Context, movie *ardplus.Movie) error {
 		FinalGlob:   stem + "/" + stem + ".*",
 		BaseStem:    stem,
 		DirStem:     stem,
-		FileTag:     a.itemTag(),
 	}
 	if skip, err := a.Manager.Prepare(item); skip || err != nil {
 		return err
@@ -176,7 +175,6 @@ func (a *App) seriesFlow(ctx context.Context, series *ardplus.Series, skip int) 
 				BaseStem:    episodeStem,
 				DirStem:     seasonStem,
 				DirUsesTag:  true,
-				FileTag:     a.itemTag(),
 			}
 			if skipped, err := a.Manager.Prepare(item); err != nil {
 				a.recordEpisodeFailure("could not prepare %s: %s", staging, err.Error())
@@ -259,7 +257,6 @@ func (a *App) tatortFlow(ctx context.Context, slug string) error {
 			StagingPath: staging,
 			FinalGlob:   finalGlob,
 			BaseStem:    base,
-			FileTag:     a.itemTag(),
 		}
 		if skipped, err := a.Manager.Prepare(item); err != nil {
 			a.recordEpisodeFailure("could not prepare %s: %s", staging, err.Error())

@@ -57,20 +57,16 @@ func (m *Model) applyStartInput() error {
 			return errors.New("Bitte eine URL eingeben.")
 		}
 	case formStart:
-		if url == "" && len(m.library) == 0 {
+		if url == "" && len(m.library) == 0 && !m.hasCatalog() {
 			return config.ErrNoURL
 		}
 	}
 
 	m.cfg.Username = strings.TrimSpace(m.fields[1].Value())
 	m.cfg.Password = m.fields[2].Value()
-	m.cfg.FileTag = strings.TrimSpace(m.fields[3].Value())
 
 	if m.needsLogin && (m.cfg.Username == "" || m.cfg.Password == "") {
 		return fmt.Errorf("Credentials missing! Set ARD_PLUS_USER/ARD_PLUS_PASSWORD or enter them above.")
-	}
-	if err := config.ValidateFileTag(m.cfg.FileTag); err != nil {
-		return err
 	}
 	return nil
 }
@@ -79,7 +75,6 @@ func (m *Model) applyStartInput() error {
 func (m *Model) persistStart() {
 	if m.store != nil {
 		_ = m.store.SetSetting(store.SettingUsername, m.cfg.Username)
-		_ = m.store.SetSetting(store.SettingFileTag, m.cfg.FileTag)
 		_ = m.store.SetSetting(store.SettingLastURL, m.cfg.URL)
 	}
 	if m.secrets != nil && m.cfg.Password != "" {

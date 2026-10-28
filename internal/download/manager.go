@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/revunix/ard-plus-dl/internal/media"
 )
 
 // Item describes one download target.
@@ -28,15 +26,11 @@ type Item struct {
 	DirStem string
 	// DirUsesTag appends the media tag to a newly created directory.
 	DirUsesTag bool
-	// FileTag overrides the global Datei-Tag of the manager, so a series can
-	// carry its own tag.
-	FileTag string
 }
 
 // Manager performs the skip, cleanup and finalize steps.
 type Manager struct {
 	DownloadsDir string
-	FileTag      string
 	Force        bool
 	// Probe reads the media information of a finished file.
 	Probe func(ctx context.Context, path string) (string, error)
@@ -47,15 +41,6 @@ func (m *Manager) logf(format string, args ...any) {
 	if m.Logf != nil {
 		m.Logf(format, args...)
 	}
-}
-
-// fileTag returns the Datei-Tag of the item: the one of the series when it
-// has its own, the global one otherwise.
-func (m *Manager) fileTag(item Item) string {
-	if item.FileTag != "" {
-		return item.FileTag
-	}
-	return m.FileTag
 }
 
 // StagingPath returns the absolute staging path without extension.
@@ -189,7 +174,6 @@ func (m *Manager) Finalize(ctx context.Context, item Item, stagingFile string) (
 		_ = os.RemoveAll(m.WorkDir(item))
 		return stagingFile, nil
 	}
-	tag = media.ApplyFileTag(tag, m.fileTag(item))
 
 	dir := ""
 	if item.DirStem != "" {

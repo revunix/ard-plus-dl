@@ -40,7 +40,7 @@ func TestLibraryMarksEntries(t *testing.T) {
 			t.Fatalf("add series: %v", err)
 		}
 	}
-	model := newModel(Options{Config: &config.Options{FileTag: "example"}, Store: state})
+	model := newModel(Options{Config: &config.Options{}, Store: state})
 	model.screen = ScreenLibrary
 	model.loadLibrary()
 	if len(model.library) != 3 {

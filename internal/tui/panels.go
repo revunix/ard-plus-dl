@@ -24,8 +24,8 @@ func (m *Model) queueView() []string {
 	if m.height > 0 {
 		reserved := len(header) + len(footer)
 		if m.height >= 18 {
-			// Blank lines above and between the cards.
-			reserved += 2
+			// The blank line between the cards; the head brings its own.
+			reserved++
 		}
 		if m.cancelled {
 			reserved += 2
@@ -35,16 +35,13 @@ func (m *Model) queueView() []string {
 
 	spacious := m.height <= 0 || m.height >= 18
 	var contentLines []string
-	if spacious {
-		contentLines = append(contentLines, "")
-	}
 	queue := m.queueCard(width, maxContent)
 	contentLines = append(contentLines, queue...)
 	remaining := maxContent - len(queue)
 	if remaining > 0 {
-		if spacious && remaining > 1 {
+		if spacious && remaining > 1 && m.logVisible {
+			// The reserved rows already hold this line.
 			contentLines = append(contentLines, "")
-			remaining--
 		}
 		if m.logVisible {
 			contentLines = append(contentLines, m.activityPanel(width, remaining)...)
@@ -122,7 +119,7 @@ func (m *Model) queueRows(inner, budget int) []string {
 		}
 		cursor := "  "
 		if index == jobIndex {
-			cursor = theme.Cursor.Render("▸ ")
+			cursor = cursorMark(true)
 		}
 		// The label gives way to the progress so that both stay readable.
 		labelWidth := inner - ansi.StringWidth(cursor) - ansi.StringWidth(pill) - 1 - ansi.StringWidth(progress) - 1
@@ -141,17 +138,21 @@ func (m *Model) queueRows(inner, budget int) []string {
 			}
 			head += strings.Repeat(" ", gap) + theme.Muted.Render(progress)
 		}
+		if index == jobIndex {
+			head = highlightRow(head, inner)
+		}
 		rows = append(rows, fitLine(head, inner))
 		if index == jobIndex {
 			if item.total > 0 {
-				barWidth := min(max(inner-4, 8), 40)
-				rows = append(rows, fitLine(progressBar(item.done, item.total, barWidth), inner))
+				// The bar spans the box below the line of the job.
+				barWidth := max(inner-2, 8)
+				rows = append(rows, fitLine("  "+progressBar(item.done, item.total, barWidth), inner))
 			}
 			if remaining := m.jobRemaining(item); remaining != "" {
-				rows = append(rows, fitLine(theme.Muted.Render(remaining), inner))
+				rows = append(rows, fitLine("  "+theme.Muted.Render(remaining), inner))
 			}
 			if item.path != "" {
-				rows = append(rows, fitLine(theme.Muted.Render("Ziel")+"  "+item.path, inner))
+				rows = append(rows, fitLine("  "+theme.Muted.Render("Ziel")+"  "+item.path, inner))
 			}
 		}
 	}
@@ -163,7 +164,7 @@ func (m *Model) queueRows(inner, budget int) []string {
 		if failed > 0 {
 			counter += fmt.Sprintf(" · %d fehlgeschlagen", failed)
 		}
-		rows = append(rows, fitLine(theme.Muted.Render(counter), inner))
+		rows = append(rows, fitLine("  "+theme.Muted.Render(counter), inner))
 	}
 	return rows
 }
@@ -171,6 +172,12 @@ func (m *Model) queueRows(inner, budget int) []string {
 // renderCardBudget shrinks the content until the card fits the available
 // height.
 func (m *Model) renderCardBudget(width int, title string, content []string, maxLines int) []string {
+	return m.renderCardBudgetFocus(width, title, content, maxLines, true)
+}
+
+// renderCardBudgetFocus shrinks the content until the box fits the available
+// height; the frame shows whether the keys work in the box.
+func (m *Model) renderCardBudgetFocus(width int, title string, content []string, maxLines int, focused bool) []string {
 	if maxLines <= 0 {
 		maxLines = 1 << 30
 	}
@@ -178,13 +185,13 @@ func (m *Model) renderCardBudget(width int, title string, content []string, maxL
 		return nil
 	}
 	for len(content) > 0 {
-		panel := renderCard(width, title, content, true, "")
+		panel := renderCard(width, title, content, focused, "")
 		if len(panel) <= maxLines {
 			return panel
 		}
 		content = content[:len(content)-1]
 	}
-	return renderCard(width, title, content, true, "")
+	return renderCard(width, title, content, focused, "")
 }
 
 func (m *Model) currentJobIndex() int {
@@ -225,7 +232,12 @@ func (m *Model) activityPanel(width, maxLines int) []string {
 		}
 		content = append(content, fitLogLine(rendered, inner))
 	}
-	return m.renderCardBudget(width, "Aktivität", content, maxLines)
+	// The protocol fills the rest of the screen and stands back behind the
+	// queue the keys work in.
+	if m.height > 0 {
+		content = padLines(content, maxLines-overhead)
+	}
+	return m.renderCardBudgetFocus(width, "Aktivität", content, maxLines, false)
 }
 
 func (m *Model) hasCompletedJob() bool {
@@ -260,6 +272,7 @@ func (m *Model) libraryView() []string {
 	subtitle := librarySubtitle(m.library)
 	header := m.header("Bibliothek", subtitle)
 	footer := m.screenFooter(width)
+	footer = append(m.lowerBoxes(width), footer...)
 
 	inner := m.cardTextWidth(width)
 	extra := 1 // column heading inside the card
@@ -275,16 +288,21 @@ func (m *Model) libraryView() []string {
 	}
 	budget = min(budget, m.libVisible())
 
+	notice := 0
+	if m.libMessage != "" && !m.busy {
+		notice = 2
+	}
+	fill := m.boxHeight(header, footer, notice)
 	var body []string
 	leftWidth, rightWidth := m.splitAt(width, 0.55)
 	if rightWidth > 0 {
 		// Wide terminals show the list next to the details of the entry
 		// under the cursor.
-		left := renderCard(leftWidth, "Serien", m.libraryRows(cardInner(leftWidth), budget, true), true, "")
-		right := renderCard(rightWidth, "Details", clampLines(m.libraryDetail(cardInner(rightWidth)), budget), false, "")
+		left := renderCard(leftWidth, "Serien", padLines(m.libraryRows(cardInner(leftWidth), budget, true), fill), true, "")
+		right := renderCard(rightWidth, "Details", padLines(clampLines(m.libraryDetail(cardInner(rightWidth)), budget), fill), false, "")
 		body = splitColumns(left, right, leftWidth, rightWidth)
 	} else {
-		body = renderCard(width, "Serien", m.libraryRows(inner, budget, false), true, "")
+		body = renderCard(width, "Serien", padLines(m.libraryRows(inner, budget, false), fill), true, "")
 	}
 	if m.libMessage != "" && !m.busy {
 		// While the app works, the status stands in the top bar.
@@ -304,7 +322,7 @@ func (m *Model) libraryRows(inner, budget int, compact bool) []string {
 		if m.filterActive() {
 			return append(rows, clampLines(renderEmptyAction(inner, "Nichts gefunden.", "Ändere den Suchbegriff.", "esc", "Filter löschen"), budget)...)
 		}
-		return clampLines(renderEmptyAction(inner, "Noch keine Serien gespeichert.", "Lege eine Serie an, um loszulegen.", "a", "URL hinzufügen"), budget)
+		return clampLines(renderEmptyAction(inner, "Noch keine Serien gespeichert.", "Im Katalog stehen alle Titel von ARD Plus.", "tab", "Katalog öffnen"), budget)
 	}
 	rows = append(rows, theme.Muted.Render(fitLine(libraryColumns(inner, compact).header(), inner)))
 	if budget > 0 {
@@ -326,7 +344,7 @@ func (m *Model) libraryRows(inner, budget int, compact bool) []string {
 func (m *Model) searchRow(width int) string {
 	marker := "  "
 	if m.searching {
-		marker = theme.Cursor.Render("▸ ")
+		marker = cursorMark(true)
 	}
 	return fitLine(marker+theme.Muted.Render("Suche  ")+m.search.View(), width)
 }
@@ -358,7 +376,6 @@ func (m *Model) libraryDetail(width int) []string {
 	}
 	lines = append(lines, detailRows("Geprüft", checkedLabel(entry.CheckedAt), width)...)
 	lines = append(lines, detailRows("Hinzugefügt", addedLabel(entry.AddedAt), width)...)
-	lines = append(lines, detailRows("Datei-Tag", tagLabel(entry.Tag), width)...)
 	lines = append(lines, detailRows("Überspringen", skipLabel(entry.Skip), width)...)
 	lines = append(lines, "")
 	lines = append(lines, theme.Muted.Render("e Einstellungen der Serie"))
@@ -384,14 +401,6 @@ func addedLabel(added time.Time) string {
 		return "unbekannt"
 	}
 	return added.Local().Format("02.01.2006")
-}
-
-// tagLabel renders the file tag of an entry.
-func tagLabel(tag string) string {
-	if strings.TrimSpace(tag) == "" {
-		return "der globalen Einstellung"
-	}
-	return tag
 }
 
 // skipLabel renders the number of episodes the entry skips.
@@ -506,7 +515,7 @@ func (m *Model) libraryLine(entry store.Series, index, width int, compact bool) 
 	cols := libraryColumns(width, compact)
 	cursor := "  "
 	if index == m.libCursor {
-		cursor = theme.Cursor.Render("▸ ")
+		cursor = cursorMark(true)
 	}
 	state := "  "
 	switch {
@@ -542,6 +551,9 @@ func (m *Model) libraryLine(entry store.Series, index, width int, compact bool) 
 		}
 		line += " " + padRight(theme.Muted.Render(date), cols.date)
 	}
+	if index == m.libCursor {
+		return highlightRow(line, width)
+	}
 	return fitLine(line, width)
 }
 
@@ -560,6 +572,7 @@ func kindLabel(kind string) string {
 func (m *Model) detailsView() []string {
 	width := m.frameWidth()
 	footer := m.detailsFooter(width)
+	footer = append(m.lowerBoxes(width), footer...)
 	badge := renderBadge(kindLabel(m.details.Kind))
 	urlWidth := max(8, width-ansi.StringWidth(badge)-3)
 	title := truncate(entryTitle(m.details), max(8, width-2))
@@ -607,8 +620,9 @@ func (m *Model) detailsView() []string {
 			budget := listBudget(m.height, header, footer, 0, width)
 			budget = min(budget, m.detailVisible())
 			meta := fmt.Sprintf("%d Folgen · %d offen", seasonTotal, seasonOpen)
-			left := renderCard(leftWidth, "Staffeln", m.seasonLines(budget, cardInner(leftWidth)), true, meta)
-			right := renderCard(rightWidth, "Staffel", clampLines(m.seasonDetail(cardInner(rightWidth)), budget), false, "")
+			fill := m.boxHeight(header, footer, m.detailMessageRows())
+			left := renderCard(leftWidth, "Staffeln", padLines(m.seasonLines(budget, cardInner(leftWidth)), fill), true, meta)
+			right := renderCard(rightWidth, "Staffel", padLines(clampLines(m.seasonDetail(cardInner(rightWidth)), budget), fill), false, "")
 			body = splitColumns(left, right, leftWidth, rightWidth)
 			break
 		}
@@ -630,8 +644,9 @@ func (m *Model) detailsView() []string {
 			budget := listBudget(m.height, header, footer, 0, width)
 			budget = min(budget, m.detailVisible())
 			meta := fmt.Sprintf("%d %s, davon %d offen", total, episodeWord(total), open)
-			left := renderCard(leftWidth, "Folgen", m.episodeLines(m.episodes, budget, cardInner(leftWidth)), true, meta)
-			right := renderCard(rightWidth, "Folge", clampLines(m.episodeDetail(m.episodes, cardInner(rightWidth)), budget), false, "")
+			fill := m.boxHeight(header, footer, m.detailMessageRows())
+			left := renderCard(leftWidth, "Folgen", padLines(m.episodeLines(m.episodes, budget, cardInner(leftWidth)), fill), true, meta)
+			right := renderCard(rightWidth, "Folge", padLines(clampLines(m.episodeDetail(m.episodes, cardInner(rightWidth)), budget), fill), false, "")
 			body = splitColumns(left, right, leftWidth, rightWidth)
 			break
 		}
@@ -660,14 +675,18 @@ func (m *Model) seasonLines(budget, width int) []string {
 		season := m.detailSeasons[index]
 		cursor := "  "
 		if index == m.detailSeasonCursor {
-			cursor = theme.Cursor.Render("▸ ")
+			cursor = cursorMark(true)
 		}
 		line := fmt.Sprintf("Staffel %d - %d %s, %d offen",
 			season.number, season.total, episodeWord(season.total), season.open)
 		if index == m.detailSeasonCursor {
 			line = theme.Selected.Render(line)
 		}
-		lines = append(lines, fitLine(cursor+line, width))
+		row := fitLine(cursor+line, width)
+		if index == m.detailSeasonCursor {
+			row = highlightRow(row, width)
+		}
+		lines = append(lines, row)
 	}
 	if bottom {
 		lines = append(lines, theme.Muted.Render(fmt.Sprintf("  … %d weitere", len(m.detailSeasons)-end)))
@@ -686,6 +705,7 @@ func (m *Model) episodeFooter(width int, inSeason bool) []string {
 func (m *Model) seasonEpisodesView() []string {
 	width := m.frameWidth()
 	footer := m.episodeFooter(width, true)
+	footer = append(m.lowerBoxes(width), footer...)
 	badge := renderBadge(kindLabel(m.details.Kind))
 	seasonLabel := fmt.Sprintf("Staffel %d  ", m.activeDetailSeason)
 	urlWidth := max(8, width-ansi.StringWidth(badge)-ansi.StringWidth(seasonLabel)-3)
@@ -704,7 +724,12 @@ func (m *Model) seasonEpisodesView() []string {
 		body = append(body, fitLine(fmt.Sprintf("%d %s, davon %d offen", total, episodeWord(total), open), width))
 	}
 
+	leftWidth, rightWidth := m.splitAt(width, 0.55)
+	// The list is measured for the box it stands in.
 	inner := m.cardTextWidth(width)
+	if rightWidth > 0 {
+		inner = cardInner(leftWidth)
+	}
 	budget := listBudget(m.height, header, footer, 2, width)
 	budget = min(budget, m.detailVisible())
 	var rows []string
@@ -713,12 +738,12 @@ func (m *Model) seasonEpisodesView() []string {
 	} else {
 		rows = m.episodeLines(m.detailSeasonEpisodes, budget, inner)
 	}
-	leftWidth, rightWidth := m.splitAt(width, 0.55)
 	if rightWidth > 0 {
 		// The episode under the cursor gets its own column.
 		meta := fmt.Sprintf("%d %s, davon %d offen", total, episodeWord(total), open)
-		left := renderCard(leftWidth, "Folgen", rows, true, meta)
-		right := renderCard(rightWidth, "Folge", clampLines(m.episodeDetail(m.detailSeasonEpisodes, cardInner(rightWidth)), budget), false, "")
+		fill := m.boxHeight(header, footer, m.detailMessageRows())
+		left := renderCard(leftWidth, "Folgen", padLines(rows, fill), true, meta)
+		right := renderCard(rightWidth, "Folge", padLines(clampLines(m.episodeDetail(m.detailSeasonEpisodes, cardInner(rightWidth)), budget), fill), false, "")
 		body = splitColumns(left, right, leftWidth, rightWidth)
 	} else {
 		body = append(body, renderCard(width, "Folgen", rows, true, "")...)
@@ -797,11 +822,11 @@ func (m *Model) episodeLines(episodes []store.KnownEpisode, budget, width int) [
 		episode := episodes[index]
 		cursor := "  "
 		if index == m.detailCursor {
-			cursor = theme.Cursor.Render("▸ ")
+			cursor = cursorMark(true)
 		}
-		box := "[ ]"
+		box := theme.Subtle.Render("[ ]")
 		if m.detailChoice[index] {
-			box = selectedStyle.Render("[x]")
+			box = theme.Accent.Render("[x]")
 		}
 		status := renderPill("geladen", pillDone)
 		if episode.DownloadedAt == nil {
@@ -817,8 +842,11 @@ func (m *Model) episodeLines(episodes []store.KnownEpisode, budget, width int) [
 		if index == m.detailCursor {
 			episodeTitle = theme.Selected.Render(episodeTitle)
 		}
-		line := fmt.Sprintf("%s%s %s%s %s", cursor, box, label, episodeTitle, status)
-		lines = append(lines, fitLine(line, width))
+		line := fitLine(fmt.Sprintf("%s%s %s%s %s", cursor, box, label, episodeTitle, status), width)
+		if index == m.detailCursor {
+			line = highlightRow(line, width)
+		}
+		lines = append(lines, line)
 	}
 	if bottom {
 		lines = append(lines, theme.Muted.Render(fmt.Sprintf("  … %d weitere", len(episodes)-end)))

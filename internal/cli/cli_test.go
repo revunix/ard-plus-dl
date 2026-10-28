@@ -48,7 +48,6 @@ func isolatedEnv(t *testing.T) *cliEnv {
 	t.Setenv("ARD_PLUS_CREDENTIALS_FILE", filepath.Join(env.config, "ard-plus-dl", "credentials"))
 	t.Setenv("ARD_PLUS_USER", "")
 	t.Setenv("ARD_PLUS_PASSWORD", "")
-	t.Setenv("ARD_PLUS_TAG", "")
 	t.Setenv("ARD_PLUS_FFMPEG", filepath.Join(root, "ffmpeg-stub"))
 	t.Setenv("ARD_PLUS_FFPROBE", filepath.Join(root, "ffprobe-stub"))
 	t.Setenv("DOWNLOADS_DIR", env.downloads)
@@ -162,7 +161,6 @@ func TestMissingDependencies(t *testing.T) {
 	t.Setenv("ARD_PLUS_FFMPEG", "")
 	t.Setenv("ARD_PLUS_FFPROBE", "")
 	t.Setenv("PATH", filepath.Join(env.root, "empty-bin"))
-	t.Setenv("ARD_PLUS_TAG", "example")
 
 	code, _, stderr := runCLI(t, "https://www.ardplus.de/details/x")
 	if code != 1 {
@@ -173,32 +171,8 @@ func TestMissingDependencies(t *testing.T) {
 	}
 }
 
-func TestMissingFileTag(t *testing.T) {
-	isolatedEnv(t)
-	code, _, stderr := runCLI(t, "https://www.ardplus.de/details/x")
-	if code != 1 {
-		t.Errorf("exit code = %d, want 1", code)
-	}
-	if !strings.Contains(stderr, "Datei-Tag missing!") {
-		t.Errorf("stderr = %q, want the missing tag message", stderr)
-	}
-}
-
-func TestInvalidFileTag(t *testing.T) {
-	isolatedEnv(t)
-	t.Setenv("ARD_PLUS_TAG", "bad/tag")
-	code, _, stderr := runCLI(t, "https://www.ardplus.de/details/x")
-	if code != 1 {
-		t.Errorf("exit code = %d, want 1", code)
-	}
-	if !strings.Contains(stderr, "Invalid Datei-Tag: bad/tag (allowed: letters, digits, '.', '_', '-')") {
-		t.Errorf("stderr = %q, want the invalid tag message", stderr)
-	}
-}
-
 func TestMissingCredentials(t *testing.T) {
 	isolatedEnv(t)
-	t.Setenv("ARD_PLUS_TAG", "example")
 	code, _, stderr := runCLI(t, "https://www.ardplus.de/details/x")
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1", code)
@@ -219,7 +193,6 @@ func TestDownloadsDirectoryNotWritable(t *testing.T) {
 	}
 	blocked := filepath.Join(blocker, "downloads")
 	t.Setenv("DOWNLOADS_DIR", blocked)
-	t.Setenv("ARD_PLUS_TAG", "example")
 
 	code, _, stderr := runCLI(t, "https://www.ardplus.de/details/x")
 	if code != 1 {
@@ -266,7 +239,6 @@ func batchLogFiles(t *testing.T, linksPath string) (success, failed, download st
 func TestBatchFailureExitsOne(t *testing.T) {
 	env := isolatedEnv(t)
 	env.storeToken(t)
-	t.Setenv("ARD_PLUS_TAG", "example")
 
 	linksPath := filepath.Join(env.root, "links.txt")
 	if err := os.WriteFile(linksPath, []byte("https://example.com/details/ignored\n"), 0o644); err != nil {
@@ -299,7 +271,6 @@ func TestBatchFailureExitsOne(t *testing.T) {
 func TestBatchWithoutLinksExitsZero(t *testing.T) {
 	env := isolatedEnv(t)
 	env.storeToken(t)
-	t.Setenv("ARD_PLUS_TAG", "example")
 
 	linksPath := filepath.Join(env.root, "links.txt")
 	if err := os.WriteFile(linksPath, []byte("# nothing to do\n\n"), 0o644); err != nil {
@@ -496,7 +467,7 @@ func TestResolveDebugDirIsOffWithoutTheVariable(t *testing.T) {
 // client, otherwise the documented diagnostic files never appear.
 func TestBuildAppWiresTheDebugDirectory(t *testing.T) {
 	dir := t.TempDir()
-	opts := &config.Options{DownloadsDir: dir, FileTag: "tag", TokenFile: filepath.Join(dir, "token")}
+	opts := &config.Options{DownloadsDir: dir, TokenFile: filepath.Join(dir, "token")}
 	logs := newLogRouter(io.Discard)
 	session := buildSession(opts, logs)
 	application := buildApp(opts, session, "ffmpeg", "ffprobe", io.Discard, logs, nil, dir)

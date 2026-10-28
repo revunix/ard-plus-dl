@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/revunix/ard-plus-dl/internal/app"
+	"github.com/revunix/ard-plus-dl/internal/ardplus"
 	"github.com/revunix/ard-plus-dl/internal/config"
 	"github.com/revunix/ard-plus-dl/internal/secret"
 	"github.com/revunix/ard-plus-dl/internal/store"
@@ -34,6 +35,7 @@ const (
 	ScreenSeasonEpisodes
 	ScreenSplash
 	ScreenEditEntry
+	ScreenCatalog
 )
 
 // Messages exchanged with the app through the program loop.
@@ -145,6 +147,8 @@ type Options struct {
 	DownloadNew      func(context.Context, store.Series) error
 	DownloadEpisodes func(context.Context, store.Series, []string) error
 	RefreshEntry     func(context.Context, store.Series) error
+	// Catalog loads every series and every playable movie of ARD Plus.
+	Catalog func(context.Context) ([]ardplus.CatalogItem, error)
 }
 
 // Model is the TUI state.
@@ -201,9 +205,7 @@ type Model struct {
 
 	// The settings of a single series.
 	editEntry store.Series
-	editTag   textinput.Model
 	editSkip  textinput.Model
-	editFocus int
 	editErr   string
 
 	details              store.Series
@@ -224,8 +226,24 @@ type Model struct {
 	// downloadSeriesID is the entry of the running download.
 	downloadSeriesID int64
 
-	jobs         []job
-	log          []string
+	jobs []job
+	log  []string
+	// The catalog of ARD Plus with its own cursor, search and genre filter.
+	catalog          []ardplus.CatalogItem
+	catalogGenres    []string
+	catalogGenre     string
+	catalogTab       catalogTab
+	catalogLoading   bool
+	catalogErr       string
+	catalogCursor    int
+	catalogOffset    int
+	catalogSearch    textinput.Model
+	catalogSearching bool
+	// detailsFrom is the screen the details return to.
+	detailsFrom Screen
+
+	// history is the protocol of the session, shown below the lists.
+	history      []historyEntry
 	logVisible   bool
 	toast        string
 	toastLevel   toastLevel
@@ -290,6 +308,9 @@ func newModel(opts Options) *Model {
 		model.screen = ScreenStart
 	case opts.AutoStart:
 		model.screen = ScreenLoading
+	case opts.Catalog != nil:
+		// The catalog is the home screen: every title of ARD Plus is there.
+		model.screen = ScreenCatalog
 	case len(model.library) > 0:
 		// The library is the home screen; the form is one keystroke away.
 		model.screen = ScreenLibrary
@@ -329,29 +350,15 @@ func newModel(opts Options) *Model {
 	password.Width = 40
 	styleInput(&password)
 
-	tag := textinput.New()
-	tag.Prompt = ""
-	tag.Width = 24
-	tag.Placeholder = "Datei-Tag (z. B. example)"
-	tag.SetValue(cfg.FileTag)
-	styleInput(&tag)
-
-	model.fields = []textinput.Model{url, user, password, tag}
+	model.fields = []textinput.Model{url, user, password}
 	model.logVisible = true
 	model.spinner = spinner.New(spinner.WithSpinner(spinner.Dot))
-
-	editTag := textinput.New()
-	editTag.Prompt = ""
-	editTag.Width = 24
-	editTag.Placeholder = "Datei-Tag (z. B. example)"
-	styleInput(&editTag)
 
 	editSkip := textinput.New()
 	editSkip.Prompt = ""
 	editSkip.Width = 8
 	editSkip.Placeholder = "0"
 	styleInput(&editSkip)
-	model.editTag = editTag
 	model.editSkip = editSkip
 
 	search := textinput.New()
@@ -360,12 +367,21 @@ func newModel(opts Options) *Model {
 	search.Placeholder = "Titel suchen"
 	styleInput(&search)
 	model.search = search
+	catalogSearch := textinput.New()
+	catalogSearch.Prompt = ""
+	catalogSearch.Width = 30
+	catalogSearch.Placeholder = "Titel oder Genre suchen"
+	styleInput(&catalogSearch)
+	model.catalogSearch = catalogSearch
 	model.skipField = textinput.New()
 	model.skipField.Prompt = ""
 	model.skipField.SetValue("0")
 	model.skipField.Width = 8
 	styleInput(&model.skipField)
 	model.focusField(0)
+	if model.hidesURLField() {
+		model.focusField(1)
+	}
 	return model
 }
 
@@ -416,7 +432,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.screen {
 		case ScreenStart:
 			return m, textinput.Blink
-		case ScreenLibrary:
+		case ScreenLibrary, ScreenCatalog:
 			return m, nil
 		default:
 			return m, m.startRun()
@@ -486,6 +502,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case detailsLoadedMsg:
 		return m.handleDetailsLoadedMsg(typed)
+
+	case catalogMsg:
+		return m.handleCatalogMsg(typed)
 
 	case checkDoneMsg:
 		m.setBusy(false)
@@ -608,16 +627,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // Init starts the run or the input screen.
 func (m *Model) Init() tea.Cmd {
+	// The catalog loads in the background from the first moment, so it is
+	// ready when the splash screen or the form hands over.
+	catalog := m.loadCatalogCmd()
 	if m.screen == ScreenSplash {
-		return tea.Batch(m.splashTick(), m.clockTick())
+		return tea.Batch(m.splashTick(), m.clockTick(), catalog)
 	}
 	if m.screen == ScreenStart {
-		return textinput.Blink
+		return tea.Batch(textinput.Blink, catalog)
 	}
-	if m.screen == ScreenLibrary {
-		return nil
+	if m.screen == ScreenLibrary || m.screen == ScreenCatalog {
+		return catalog
 	}
-	return m.startRun()
+	return tea.Batch(m.startRun(), catalog)
 }
 
 func (m *Model) startRun() tea.Cmd {

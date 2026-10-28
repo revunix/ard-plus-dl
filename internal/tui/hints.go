@@ -35,10 +35,11 @@ func (m *Model) hints() hintSet {
 				{Key: "enter", Label: "öffnen"},
 				{Key: "d", Label: "laden"},
 				{Key: "n", Label: "prüfen"},
-				{Key: "/", Label: "suchen"},
+				{Key: "tab", Label: "Katalog"},
 			},
 			full: []keyHint{
 				{Key: "enter", Label: "öffnen"},
+				{Key: "tab", Label: "Katalog"},
 				{Key: "d", Label: "Folgen laden"},
 				{Key: "n", Label: "auf Neuheiten prüfen"},
 				{Key: "/", Label: "suchen"},
@@ -47,9 +48,36 @@ func (m *Model) hints() hintSet {
 				{Key: "e", Label: "Serie einstellen"},
 				{Key: "y", Label: "URL kopieren"},
 				{Key: "space", Label: "aktivieren"},
-				{Key: "a", Label: "URL aufnehmen"},
+				{Key: "a", Label: m.libraryAddLabel()},
 				{Key: "s", Label: "Einstellungen"},
 				{Key: "x", Label: "entfernen"},
+				{Key: "q", Label: "beenden"},
+			},
+		}
+
+	case ScreenCatalog:
+		return hintSet{
+			short: []keyHint{
+				{Key: "enter", Label: "öffnen"},
+				{Key: "a", Label: "aufnehmen"},
+				{Key: "/", Label: "suchen"},
+				{Key: "←/→", Label: "Serien/Filme"},
+				{Key: "g", Label: "Genre"},
+				{Key: "tab", Label: "Bibliothek"},
+			},
+			full: []keyHint{
+				{Key: "enter", Label: "öffnen und Folgen laden"},
+				{Key: "a", Label: "in die Bibliothek"},
+				{Key: "/", Label: "Titel oder Genre suchen"},
+				{Key: "←/→", Label: "Serien, Filme, Alle"},
+				{Key: "1/2/3", Label: "Serien, Filme, Alle"},
+				{Key: "g", Label: "nächstes Genre"},
+				{Key: "G", Label: "voriges Genre"},
+				{Key: "esc", Label: "Filter löschen"},
+				{Key: "y", Label: "URL kopieren"},
+				{Key: "r", Label: "neu laden"},
+				{Key: "tab", Label: "Bibliothek"},
+				{Key: "s", Label: "Einstellungen"},
 				{Key: "q", Label: "beenden"},
 			},
 		}
@@ -190,4 +218,13 @@ func (m *Model) seriesAction() string {
 		return "übernehmen"
 	}
 	return "starten"
+}
+
+// libraryAddLabel names what a does in the library: with the catalog it
+// leads there, otherwise it asks for an address.
+func (m *Model) libraryAddLabel() string {
+	if m.hasCatalog() {
+		return "Titel aus dem Katalog"
+	}
+	return "URL aufnehmen"
 }
