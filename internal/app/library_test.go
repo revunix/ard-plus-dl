@@ -693,10 +693,10 @@ func TestRememberStoresURLAndMetadata(t *testing.T) {
 func TestDownloadNewNamesTheFilesAfterTheMedia(t *testing.T) {
 	h, state := newLibraryHarness(t)
 	const url = "https://www.ardplus.de/details/s1-show"
-	entry := seedLibrary(t, state, url,
+	seedLibrary(t, state, url,
 		store.EpisodeRef{ID: "e1", Title: "Folge Eins", Season: 1, Number: 1},
 	)
-	entry = libraryEntry(t, state, url)
+	entry := libraryEntry(t, state, url)
 	h.backend.setGraphQL(downloadFixture().handler())
 
 	if err := h.app.DownloadNew(context.Background(), entry); err != nil {

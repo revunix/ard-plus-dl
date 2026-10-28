@@ -120,7 +120,6 @@ func applyTheme(mode ThemeMode) {
 	themeMode = mode
 	theme = newTheme()
 	titleStyle = theme.Title
-	selectedStyle = theme.Selected
 }
 
 // Theme colors follow the ARD Plus palette: the bright ARD blue as the one

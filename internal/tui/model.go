@@ -266,10 +266,7 @@ type Model struct {
 	skipDone       chan struct{}
 }
 
-var (
-	titleStyle    = theme.Title
-	selectedStyle = theme.Selected
-)
+var titleStyle = theme.Title
 
 // styleInput applies the design-system styles to one text input.
 func styleInput(input *textinput.Model) {

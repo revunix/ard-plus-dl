@@ -128,6 +128,9 @@ func TestCatalogOpensFromTheLibraryAndLoadsOnce(t *testing.T) {
 	}
 	model, cmd = pressKey(t, model, "tab")
 	model = runCmd(t, model, cmd)
+	if model.screen != ScreenCatalog || len(model.catalog) != 4 {
+		t.Fatalf("screen = %v, catalog = %d titles; want the loaded catalog", model.screen, len(model.catalog))
+	}
 	if *loads != 1 {
 		t.Fatalf("the catalog was loaded %d times, want once", *loads)
 	}

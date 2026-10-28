@@ -483,37 +483,6 @@ func TestTuiUsesFramedBoxesAndKeys(t *testing.T) {
 	}
 }
 
-// ansiPart is one styled chunk of a rendered line.
-type ansiPart struct {
-	code string
-	text string
-}
-
-// ansiParts splits a rendered line into its styled chunks.
-func ansiParts(line string) []ansiPart {
-	var parts []ansiPart
-	rest := line
-	for {
-		start := strings.Index(rest, "\x1b[")
-		if start < 0 {
-			if rest != "" {
-				parts = append(parts, ansiPart{text: rest})
-			}
-			return parts
-		}
-		if start > 0 {
-			parts = append(parts, ansiPart{text: rest[:start]})
-		}
-		rest = rest[start+2:]
-		end := strings.Index(rest, "m")
-		if end < 0 {
-			return parts
-		}
-		parts = append(parts, ansiPart{code: rest[:end], text: ""})
-		rest = rest[end+1:]
-	}
-}
-
 // TestLibrarySplitsIntoListAndDetails checks that wide terminals show the
 // list next to the details of the entry under the cursor.
 func TestLibrarySplitsIntoListAndDetails(t *testing.T) {
