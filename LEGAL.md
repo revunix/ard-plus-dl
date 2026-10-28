@@ -30,7 +30,7 @@ Die Maintainer übernehmen **keine Haftung** für Schäden, Rechtsverstöße ode
 
 ## Urheberrecht am Tool
 
-Dieses Projekt basiert auf [marco79cgn/ard-plus-dl](https://github.com/marco79cgn/ard-plus-dl) und dem Fork [chrmei/ard-plus-dl](https://github.com/chrmei/ard-plus-dl) (beide Unlicense). Erweiterungen in diesem Fork werden unter derselben Lizenz bereitgestellt - siehe [LICENSE](LICENSE).
+Dieses Projekt basiert auf [marco79cgn/ard-plus-dl](https://github.com/marco79cgn/ard-plus-dl) und dem Fork [chrmei/ard-plus-dl](https://github.com/chrmei/ard-plus-dl), die beide unter der Unlicense stehen. Die Unlicense erlaubt die Weitergabe unter einer anderen Lizenz, deshalb stehen die Erweiterungen in diesem Fork unter der [MIT-Lizenz](LICENSE).
 
 ## Anfragen von Rechteinhabern
 

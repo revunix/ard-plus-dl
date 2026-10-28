@@ -263,4 +263,4 @@ Die Continuous-Integration in `.github/workflows/ci.yml` läuft bei jedem Push a
 
 ## Lizenz
 
-[Unlicense](LICENSE) - basiert auf [marco79cgn/ard-plus-dl](https://github.com/marco79cgn/ard-plus-dl) und dem Fork [chrmei/ard-plus-dl](https://github.com/chrmei/ard-plus-dl).
+[MIT](LICENSE) - basiert auf [marco79cgn/ard-plus-dl](https://github.com/marco79cgn/ard-plus-dl) und dem Fork [chrmei/ard-plus-dl](https://github.com/chrmei/ard-plus-dl), die beide unter der Unlicense stehen.
