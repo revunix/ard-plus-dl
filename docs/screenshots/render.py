@@ -159,7 +159,7 @@ def strip_ansi(line):
 
 def main():
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    target = os.path.join(root, "docs", "screenshots")
+    target = os.path.join(root, "docs", "screenshots", "v2")
     shots = os.environ.get("DUMP_SHOTS", "/tmp/shots")
     os.makedirs(target, exist_ok=True)
 

@@ -25,19 +25,19 @@ Ein einzelnes Go-Binary für Linux, Windows und macOS mit interaktiver Terminal-
 
 | Katalog (Startseite) | Bibliothek |
 |----------------------|------------|
-| ![Katalog mit Angaben zum markierten Titel](docs/screenshots/catalog.png) | ![Bibliothek mit Details der markierten Serie](docs/screenshots/library.png) |
+| ![Katalog mit Angaben zum markierten Titel](docs/screenshots/v2/catalog.png) | ![Bibliothek mit Details der markierten Serie](docs/screenshots/v2/library.png) |
 
 | Downloads | |
 |-----------|-|
-| ![Queue mit Fortschritt und Aktivitätsprotokoll](docs/screenshots/downloads.png) | |
+| ![Queue mit Fortschritt und Aktivitätsprotokoll](docs/screenshots/v2/downloads.png) | |
 
 | Folgen | Einstellungen der Serie |
 |-------|------------------------|
-| ![Folgenliste mit Details der markierten Folge](docs/screenshots/episodes.png) | ![Überspringen von Folgen einer Serie](docs/screenshots/settings.png) |
+| ![Folgenliste mit Details der markierten Folge](docs/screenshots/v2/episodes.png) | ![Überspringen von Folgen einer Serie](docs/screenshots/v2/settings.png) |
 
 | Startbildschirm | Helles Schema |
 |-----------------|---------------|
-| ![Startbildschirm mit Logo und Version](docs/screenshots/splash.png) | ![Bibliothek im hellen Schema](docs/screenshots/library-light.png) |
+| ![Startbildschirm mit Logo und Version](docs/screenshots/v2/splash.png) | ![Bibliothek im hellen Schema](docs/screenshots/v2/library-light.png) |
 
 Die Bilder lassen sich neu erzeugen: `python3 docs/screenshots/render.py`.
 
